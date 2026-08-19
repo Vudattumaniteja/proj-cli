@@ -16,6 +16,10 @@ import {
   rollbackCheckpoint,
   formatCheckpointsTable,
   formatRollbackSummary,
+  runDoctor,
+  fixDoctorIssues,
+  formatDoctorReport,
+  formatDoctorFixReport,
   SUPPORTED_TEMPLATES,
   type ProjectTemplate,
 } from './engine/index.js';
@@ -213,6 +217,40 @@ export function createProgram(): Command {
       try {
         const result = await rollbackCheckpoint(process.cwd(), target);
         process.stdout.write(formatRollbackSummary(result) + '\n');
+      } catch (err: any) {
+        process.stderr.write(`Error: ${err.message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('doctor')
+    .description('Run system diagnostic checks and self-heal workspace configuration')
+    .option('-f, --fix', 'Automatically repair detected issues')
+    .option('--json', 'Output diagnostic report in JSON format')
+    .action(async (options: { fix?: boolean; json?: boolean }) => {
+      try {
+        if (options.fix) {
+          const fixReport = await fixDoctorIssues();
+          if (options.json) {
+            process.stdout.write(JSON.stringify(fixReport, null, 2) + '\n');
+          } else {
+            process.stdout.write(formatDoctorFixReport(fixReport) + '\n');
+          }
+          if (fixReport.fixedReport.errorCount > 0) {
+            process.exitCode = 1;
+          }
+        } else {
+          const report = await runDoctor();
+          if (options.json) {
+            process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+          } else {
+            process.stdout.write(formatDoctorReport(report) + '\n');
+          }
+          if (report.errorCount > 0) {
+            process.exitCode = 1;
+          }
+        }
       } catch (err: any) {
         process.stderr.write(`Error: ${err.message}\n`);
         process.exitCode = 1;
