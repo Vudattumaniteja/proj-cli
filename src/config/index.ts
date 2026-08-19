@@ -1,4 +1,4 @@
-﻿import fs from 'node:fs';
+import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {
@@ -65,6 +65,16 @@ function validateConfig(config: Partial<ProjConfig>): void {
       config.defaultTtlDays <= 0
     ) {
       throw new Error('Invalid configuration: defaultTtlDays must be a positive number');
+    }
+  }
+
+  if (config.throwaways !== undefined) {
+    if (
+      typeof config.throwaways !== 'object' ||
+      config.throwaways === null ||
+      Array.isArray(config.throwaways)
+    ) {
+      throw new Error('Invalid configuration: throwaways must be an object map');
     }
   }
 }

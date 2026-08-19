@@ -44,3 +44,34 @@ export interface FormatOptions {
   json?: boolean;
   colors?: boolean;
 }
+
+export type { ThrowawayRecord } from '../config/types.js';
+
+export interface ThrowawayOptions {
+  configDir?: string;
+  throwawaysRoot?: string;
+  now?: Date | string | number;
+}
+
+export interface GraduateOptions {
+  configDir?: string;
+  projectsRoot?: string;
+  throwawaysRoot?: string;
+  gitAuthorName?: string;
+  gitAuthorEmail?: string;
+}
+
+export interface GraduateResult {
+  name: string;
+  path: string;
+  previousPath: string;
+  isGit: boolean;
+  commitHash?: string;
+}
+
+export interface DeleteThrowawayResult {
+  name: string;
+  path: string;
+  deleted: boolean;
+}
+

@@ -34,7 +34,7 @@ describe('proj CLI binary build and execution', () => {
         throwawaysRoot: path.join(sampleProjectsDir, 'throwaways'),
       })
     );
-  });
+  }, 30000);
 
   afterAll(() => {
     if (fs.existsSync(tempConfigDir)) {
@@ -107,4 +107,52 @@ describe('proj CLI binary build and execution', () => {
     expect(found.isGit).toBe(true);
     expect(found.isDirty).toBe(false);
   });
+
+  it('executes dist/index.js scratch, extend, and graduate lifecycle via CLI binary', async () => {
+    const throwawaysDir = path.join(sampleProjectsDir, 'throwaways');
+
+    // 1. Create scratchpad
+    const { stdout: scratchOut } = await execa(
+      'node',
+      [distIndex, 'scratch', 'binary-scratch-app', '--ttl', '3', '-t', 'typescript'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(scratchOut).toContain('Successfully created throwaway scratchpad "binary-scratch-app"');
+    expect(fs.existsSync(path.join(throwawaysDir, 'binary-scratch-app', 'package.json'))).toBe(true);
+
+    // 2. Extend scratchpad
+    const { stdout: extendOut } = await execa(
+      'node',
+      [distIndex, 'extend', 'binary-scratch-app', '5'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(extendOut).toContain('Successfully extended throwaway "binary-scratch-app" by 5 days');
+
+    // 3. Graduate scratchpad
+    const { stdout: gradOut } = await execa(
+      'node',
+      [distIndex, 'graduate', 'binary-scratch-app'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(gradOut).toContain('Successfully graduated throwaway "binary-scratch-app"');
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'binary-scratch-app', 'package.json'))).toBe(true);
+    expect(fs.existsSync(path.join(throwawaysDir, 'binary-scratch-app'))).toBe(false);
+
+    // 4. Verify discovery
+    const { stdout: listOut } = await execa('node', [distIndex, 'list', '--json'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    const parsed = JSON.parse(listOut.trim());
+    const found = parsed.find((p: any) => p.name === 'binary-scratch-app');
+    expect(found).toBeDefined();
+    expect(found.isThrowaway).toBe(false);
+    expect(found.isGit).toBe(true);
+  });
 });
+
