@@ -11,6 +11,11 @@ import {
   extendThrowaway,
   deleteThrowaway,
   checkExpiredThrowaways,
+  createCheckpoint,
+  listCheckpoints,
+  rollbackCheckpoint,
+  formatCheckpointsTable,
+  formatRollbackSummary,
   SUPPORTED_TEMPLATES,
   type ProjectTemplate,
 } from './engine/index.js';
@@ -153,6 +158,61 @@ export function createProgram(): Command {
             process.stdout.write(`- ${exp.name} (expired at ${exp.expiresAt}) -> ${exp.path}\n`);
           }
         }
+      } catch (err: any) {
+        process.stderr.write(`Error: ${err.message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('checkpoint [message]')
+    .alias('save')
+    .description('Create a local Git save-game milestone checkpoint')
+    .action(async (message?: string) => {
+      try {
+        const msg = message && message.trim() ? message.trim() : 'manual checkpoint';
+        const result = await createCheckpoint(process.cwd(), msg);
+        process.stdout.write(
+          `Successfully created checkpoint ${result.shortHash} ("${result.message}")\n`
+        );
+      } catch (err: any) {
+        process.stderr.write(`Error: ${err.message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('checkpoints')
+    .alias('history')
+    .description('List recent milestone checkpoints in current repository')
+    .option(
+      '-n, --limit <number>',
+      'Maximum number of checkpoints to retrieve',
+      (val) => parseInt(val, 10)
+    )
+    .option('--json', 'Output checkpoints list in JSON format')
+    .action(async (options: { limit?: number; json?: boolean }) => {
+      try {
+        const checkpoints = await listCheckpoints(process.cwd(), options.limit);
+        if (options.json) {
+          process.stdout.write(JSON.stringify(checkpoints, null, 2) + '\n');
+        } else {
+          process.stdout.write(formatCheckpointsTable(checkpoints) + '\n');
+        }
+      } catch (err: any) {
+        process.stderr.write(`Error: ${err.message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('undo [target]')
+    .alias('rollback')
+    .description('Safely rollback to previous checkpoint with automated safety stash')
+    .action(async (target?: string) => {
+      try {
+        const result = await rollbackCheckpoint(process.cwd(), target);
+        process.stdout.write(formatRollbackSummary(result) + '\n');
       } catch (err: any) {
         process.stderr.write(`Error: ${err.message}\n`);
         process.exitCode = 1;

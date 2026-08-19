@@ -154,5 +154,49 @@ describe('proj CLI binary build and execution', () => {
     expect(found.isThrowaway).toBe(false);
     expect(found.isGit).toBe(true);
   });
+
+  it('executes dist/index.js checkpoint, checkpoints, and undo binary commands on a Git project', async () => {
+    const projPath = path.join(sampleProjectsDir, 'binary-scratch-app');
+
+    // 1. Checkpoint
+    fs.writeFileSync(path.join(projPath, 'feature.txt'), 'checkpoint integ test', 'utf8');
+    const { stdout: cpOut } = await execa(
+      'node',
+      [distIndex, 'checkpoint', 'milestone save via binary'],
+      {
+        cwd: projPath,
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(cpOut).toContain('Successfully created checkpoint');
+    expect(cpOut).toContain('checkpoint: milestone save via binary');
+
+    // 2. Checkpoints list
+    const { stdout: listCpOut } = await execa(
+      'node',
+      [distIndex, 'checkpoints', '--json'],
+      {
+        cwd: projPath,
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    const checkpoints = JSON.parse(listCpOut.trim());
+    expect(Array.isArray(checkpoints)).toBe(true);
+    expect(checkpoints[0].message).toBe('checkpoint: milestone save via binary');
+
+    // 3. Undo with uncommitted changes
+    fs.writeFileSync(path.join(projPath, 'scratch_work.txt'), 'in progress', 'utf8');
+    const { stdout: undoOut } = await execa(
+      'node',
+      [distIndex, 'undo'],
+      {
+        cwd: projPath,
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(undoOut).toContain('Rolled back to checkpoint');
+    expect(undoOut).toContain('Emergency safety stash created');
+    expect(fs.existsSync(path.join(projPath, 'scratch_work.txt'))).toBe(false);
+  });
 });
 
