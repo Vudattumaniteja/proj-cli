@@ -11,6 +11,30 @@ export interface ProjectInfo {
   isThrowaway: boolean;
 }
 
+export type ProjectTemplate = 'minimal' | 'typescript' | 'python' | 'web';
+
+export const SUPPORTED_TEMPLATES: readonly ProjectTemplate[] = [
+  'minimal',
+  'typescript',
+  'python',
+  'web',
+] as const;
+
+export interface ScaffoldOptions {
+  parentDir?: string;
+  configDir?: string;
+  gitAuthorName?: string;
+  gitAuthorEmail?: string;
+}
+
+export interface ScaffoldResult {
+  name: string;
+  path: string;
+  template: ProjectTemplate;
+  commitHash: string;
+  files: string[];
+}
+
 export interface DiscoveryOptions {
   throwawaysRoot?: string;
   includeThrowaways?: boolean;

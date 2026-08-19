@@ -5,6 +5,9 @@ import {
   listProjects,
   formatProjectsTable,
   formatProjectsJson,
+  scaffoldProject,
+  SUPPORTED_TEMPLATES,
+  type ProjectTemplate,
 } from './engine/index.js';
 
 export * from './config/index.js';
@@ -18,6 +21,29 @@ export function createProgram(): Command {
     .name('proj')
     .description('TypeScript CLI for Developer Workspace & Local Git Project Management')
     .version('0.1.0');
+
+  program
+    .command('new <name>')
+    .alias('create')
+    .description('Scaffold a new project repository with agent guardrails and Git snapshot')
+    .option(
+      '-t, --template <template>',
+      `Starter template (${SUPPORTED_TEMPLATES.join(', ')})`,
+      'minimal'
+    )
+    .action(async (name: string, options: { template?: string }) => {
+      const template = (options.template || 'minimal') as ProjectTemplate;
+      const config = getConfig();
+      try {
+        const result = await scaffoldProject(name, template, {
+          parentDir: config.projectsRoot,
+        });
+        process.stdout.write(`Successfully created project "${result.name}" at ${result.path}\n`);
+      } catch (err: any) {
+        process.stderr.write(`Error: ${err.message}\n`);
+        process.exitCode = 1;
+      }
+    });
 
   program
     .command('list')
