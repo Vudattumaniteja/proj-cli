@@ -366,5 +366,45 @@ describe('proj CLI basic interface', () => {
       process.stdout.write = originalWrite;
     }
   });
+
+  it('runs doctor and doctor --fix CLI commands', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      // 1. Run doctor
+      await program.parseAsync(['node', 'proj', 'doctor']);
+      expect(output).toContain('System Diagnostics');
+      expect(output).toContain('Git binary availability');
+
+      // 2. Run doctor --json
+      output = '';
+      await program.parseAsync(['node', 'proj', 'doctor', '--json']);
+      const parsed = JSON.parse(output.trim());
+      expect(parsed).toBeDefined();
+      expect(Array.isArray(parsed.checks)).toBe(true);
+      expect(parsed.checks.length).toBe(5);
+
+      // 3. Run doctor --fix
+      output = '';
+      await program.parseAsync(['node', 'proj', 'doctor', '--fix']);
+      expect(output).toContain('System Diagnostics & Self-Healing');
+      expect(output).toContain('Post-repair Diagnostic Status');
+
+      // 4. Run doctor --fix --json
+      output = '';
+      await program.parseAsync(['node', 'proj', 'doctor', '--fix', '--json']);
+      const fixParsed = JSON.parse(output.trim());
+      expect(fixParsed.fixedReport).toBeDefined();
+      expect(fixParsed.fixedReport.allOk).toBe(true);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 

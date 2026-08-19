@@ -198,5 +198,35 @@ describe('proj CLI binary build and execution', () => {
     expect(undoOut).toContain('Emergency safety stash created');
     expect(fs.existsSync(path.join(projPath, 'scratch_work.txt'))).toBe(false);
   });
+
+  it('executes dist/index.js doctor and doctor --fix binary commands', async () => {
+    // 1. Run doctor
+    const { stdout: docOut } = await execa('node', [distIndex, 'doctor'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(docOut).toContain('System Diagnostics');
+    expect(docOut).toContain('Git binary availability');
+
+    // 2. Run doctor --json
+    const { stdout: docJsonOut } = await execa('node', [distIndex, 'doctor', '--json'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    const docReport = JSON.parse(docJsonOut.trim());
+    expect(docReport.checks.length).toBe(5);
+
+    // 3. Run doctor --fix
+    const { stdout: docFixOut } = await execa('node', [distIndex, 'doctor', '--fix'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(docFixOut).toContain('System Diagnostics & Self-Healing');
+    expect(docFixOut).toContain('Post-repair Diagnostic Status');
+
+    // 4. Run doctor --fix --json
+    const { stdout: docFixJsonOut } = await execa('node', [distIndex, 'doctor', '--fix', '--json'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    const fixReport = JSON.parse(docFixJsonOut.trim());
+    expect(fixReport.fixedReport.allOk).toBe(true);
+  });
 });
 
