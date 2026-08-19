@@ -228,5 +228,53 @@ describe('proj CLI binary build and execution', () => {
     const fixReport = JSON.parse(docFixJsonOut.trim());
     expect(fixReport.fixedReport.allOk).toBe(true);
   });
+
+  it('executes dist/index.js adopt, rules, and code binary commands', async () => {
+    // 1. adopt
+    const legacyFolder = path.join(tempConfigDir, 'binary-legacy-dir');
+    fs.mkdirSync(legacyFolder);
+    fs.writeFileSync(path.join(legacyFolder, 'app.py'), 'print("binary adopt")', 'utf8');
+
+    const { stdout: adoptOut } = await execa(
+      'node',
+      [distIndex, 'adopt', legacyFolder],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(adoptOut).toContain('Successfully adopted project "binary-legacy-dir"');
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'binary-legacy-dir', 'app.py'))).toBe(true);
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'binary-legacy-dir', 'AGENTS.md'))).toBe(true);
+
+    // 2. rules view
+    const { stdout: rulesOut } = await execa(
+      'node',
+      [distIndex, 'rules', 'view'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(rulesOut).toContain('Project Context & Coding Guidelines');
+
+    // 3. rules edit
+    const { stdout: rulesEditOut } = await execa(
+      'node',
+      [distIndex, 'rules', 'edit'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(rulesEditOut).toContain('Opening master AGENTS.md in VS Code');
+
+    // 4. code
+    const { stdout: codeOut } = await execa(
+      'node',
+      [distIndex, 'code', 'binary-legacy-dir'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(codeOut).toContain('Opening project "binary-legacy-dir" in VS Code');
+  });
 });
 

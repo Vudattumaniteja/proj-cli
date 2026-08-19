@@ -117,3 +117,19 @@ export interface RollbackResult {
   summary: string;
 }
 
+export interface AdoptOptions {
+  configDir?: string;
+  projectsRoot?: string;
+  name?: string;
+  gitAuthorName?: string;
+  gitAuthorEmail?: string;
+}
+
+export interface AdoptResult {
+  name: string;
+  path: string;
+  previousPath: string;
+  isGit: boolean;
+  commitHash?: string;
+}
+
