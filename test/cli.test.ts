@@ -167,4 +167,61 @@ describe('proj CLI basic interface', () => {
       process.stdout.write = originalWrite;
     }
   });
+
+  it('runs new command and scaffolds a new project with Git commit and guardrails', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'new', 'cli-created-app', '-t', 'typescript']);
+      expect(output).toContain('Successfully created project "cli-created-app"');
+      expect(fs.existsSync(path.join(projectsDir, 'cli-created-app', 'package.json'))).toBe(true);
+      expect(fs.existsSync(path.join(projectsDir, 'cli-created-app', 'AGENTS.md'))).toBe(true);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs create alias command and scaffolds a python project', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'create', 'py-cli-app', '--template', 'python']);
+      expect(output).toContain('Successfully created project "py-cli-app"');
+      expect(fs.existsSync(path.join(projectsDir, 'py-cli-app', 'pyproject.toml'))).toBe(true);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('handles error on duplicate project name gracefully', async () => {
+    const program = createProgram();
+    let errOutput = '';
+    const originalErr = process.stderr.write;
+    process.stderr.write = ((chunk: any) => {
+      errOutput += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      fs.mkdirSync(path.join(projectsDir, 'duplicate-cli-app'));
+      await program.parseAsync(['node', 'proj', 'new', 'duplicate-cli-app']);
+      expect(errOutput).toContain('already exists');
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.stderr.write = originalErr;
+      process.exitCode = 0;
+    }
+  });
 });

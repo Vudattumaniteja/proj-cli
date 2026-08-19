@@ -83,4 +83,28 @@ describe('proj CLI binary build and execution', () => {
     expect(parsed[0].name).toBe('frontend-app');
     expect(parsed[0].templateBadge).toBe('[typescript]');
   });
+
+  it('executes dist/index.js new to scaffold project and discovers it via list', async () => {
+    const { stdout: newOut } = await execa(
+      'node',
+      [distIndex, 'new', 'integ-web-app', '-t', 'web'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(newOut).toContain('Successfully created project "integ-web-app"');
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'integ-web-app', 'index.html'))).toBe(true);
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'integ-web-app', 'AGENTS.md'))).toBe(true);
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'integ-web-app', '.gitignore'))).toBe(true);
+
+    const { stdout: listOut } = await execa('node', [distIndex, 'list', '--json'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    const parsed = JSON.parse(listOut.trim());
+    const found = parsed.find((p: any) => p.name === 'integ-web-app');
+    expect(found).toBeDefined();
+    expect(found.templateBadge).toBe('[web]');
+    expect(found.isGit).toBe(true);
+    expect(found.isDirty).toBe(false);
+  });
 });
