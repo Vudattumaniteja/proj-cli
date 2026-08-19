@@ -224,4 +224,100 @@ describe('proj CLI basic interface', () => {
       process.exitCode = 0;
     }
   });
+
+  it('runs scratch command and creates a throwaway scratchpad with TTL metadata', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'scratch', 'test-scratch', '--ttl', '5', '-t', 'typescript']);
+      expect(output).toContain('Successfully created throwaway scratchpad "test-scratch"');
+      expect(fs.existsSync(path.join(throwawaysDir, 'test-scratch', 'package.json'))).toBe(true);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs extend command and extends throwaway expiration', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'scratch', 'extendable-scratch', '--ttl', '2']);
+      output = '';
+      await program.parseAsync(['node', 'proj', 'extend', 'extendable-scratch', '3']);
+      expect(output).toContain('Successfully extended throwaway "extendable-scratch" by 3 days');
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs graduate command and migrates scratchpad to canonical projects root', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'scratch', 'graduate-me', '-t', 'web']);
+      output = '';
+      await program.parseAsync(['node', 'proj', 'graduate', 'graduate-me']);
+      expect(output).toContain('Successfully graduated throwaway "graduate-me"');
+      expect(fs.existsSync(path.join(projectsDir, 'graduate-me', 'index.html'))).toBe(true);
+      expect(fs.existsSync(path.join(throwawaysDir, 'graduate-me'))).toBe(false);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs delete-throwaway command and removes scratchpad', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'scratch', 'deletable-scratch']);
+      output = '';
+      await program.parseAsync(['node', 'proj', 'delete-throwaway', 'deletable-scratch']);
+      expect(output).toContain('Successfully deleted throwaway "deletable-scratch"');
+      expect(fs.existsSync(path.join(throwawaysDir, 'deletable-scratch'))).toBe(false);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs expired command and outputs message when no expired throwaways exist', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'expired']);
+      expect(output).toContain('No expired throwaways found');
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
 });
+

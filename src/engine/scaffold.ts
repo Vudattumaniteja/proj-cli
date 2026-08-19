@@ -54,7 +54,7 @@ export function validateTemplate(template: string): asserts template is ProjectT
 /**
  * Generates starter project files for the specified template variant.
  */
-function generateTemplateFiles(
+export function generateTemplateFiles(
   projectPath: string,
   name: string,
   template: ProjectTemplate,
