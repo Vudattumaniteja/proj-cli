@@ -75,3 +75,45 @@ export interface DeleteThrowawayResult {
   deleted: boolean;
 }
 
+export interface CheckpointOptions {
+  gitAuthorName?: string;
+  gitAuthorEmail?: string;
+  allowEmpty?: boolean;
+}
+
+export interface CheckpointResult {
+  hash: string;
+  shortHash: string;
+  message: string;
+  timestamp: Date;
+  filesChanged: number;
+}
+
+export interface CheckpointInfo {
+  hash: string;
+  shortHash: string;
+  message: string;
+  date: Date;
+  timestamp: Date;
+  relativeTimestamp: string;
+  relativeTime: string;
+  authorName?: string;
+  authorEmail?: string;
+}
+
+export interface RollbackOptions {
+  force?: boolean;
+}
+
+export interface RollbackResult {
+  success: boolean;
+  targetHash: string;
+  targetShortHash: string;
+  targetMessage: string;
+  stashCreated: boolean;
+  stashName: string | null;
+  stashRef: string | null;
+  revertedFiles: string[];
+  summary: string;
+}
+

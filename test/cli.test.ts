@@ -319,5 +319,52 @@ describe('proj CLI basic interface', () => {
       process.stdout.write = originalWrite;
     }
   });
+
+  it('runs checkpoint, checkpoints, and undo CLI commands against a Git project', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    const originalCwd = process.cwd();
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      // 1. Scaffold a project
+      await program.parseAsync(['node', 'proj', 'new', 'git-safety-cli-proj']);
+      const projPath = path.join(projectsDir, 'git-safety-cli-proj');
+      process.chdir(projPath);
+
+      // 2. Make a change and create a checkpoint
+      fs.writeFileSync(path.join(projPath, 'new-file.txt'), 'checkpoint cli test', 'utf8');
+      output = '';
+      await program.parseAsync(['node', 'proj', 'checkpoint', 'cli added new file']);
+      expect(output).toContain('Successfully created checkpoint');
+      expect(output).toContain('checkpoint: cli added new file');
+
+      // 3. List checkpoints
+      output = '';
+      await program.parseAsync(['node', 'proj', 'checkpoints']);
+      expect(output).toContain('checkpoint: cli added new file');
+
+      // 4. List checkpoints JSON
+      output = '';
+      await program.parseAsync(['node', 'proj', 'checkpoints', '--json']);
+      const parsed = JSON.parse(output.trim());
+      expect(Array.isArray(parsed)).toBe(true);
+      expect(parsed.length).toBeGreaterThanOrEqual(2);
+
+      // 5. Add dirty changes and rollback
+      fs.writeFileSync(path.join(projPath, 'dirty.txt'), 'uncommitted', 'utf8');
+      output = '';
+      await program.parseAsync(['node', 'proj', 'undo']);
+      expect(output).toContain('Rolled back to checkpoint');
+      expect(output).toContain('Emergency safety stash created');
+    } finally {
+      process.chdir(originalCwd);
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 

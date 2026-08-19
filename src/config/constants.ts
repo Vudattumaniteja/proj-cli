@@ -7,6 +7,9 @@ export const DEFAULT_GITIGNORE_TEMPLATE_NAME = 'gitignore.default';
 
 export const DEFAULT_TTL_DAYS = 3;
 
+export const SAFETY_STASH_PREFIX = 'proj-safety-stash-';
+export const CHECKPOINT_PREFIX = 'checkpoint: ';
+
 export const DEFAULT_AGENTS_TEMPLATE = `# AGENTS.md
 
 ## Project Context & Coding Guidelines
