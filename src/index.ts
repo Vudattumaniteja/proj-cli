@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { fileURLToPath } from 'node:url';
 
 export * from './config/index.js';
+export * from './ipc/index.js';
 
 export function createProgram(): Command {
   const program = new Command();
