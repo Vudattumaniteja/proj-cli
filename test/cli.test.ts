@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createProgram } from '../src/index.js';
 import { updateConfig } from '../src/config/index.js';
+import { readIpcToken } from '../src/ipc/index.js';
 
 describe('proj CLI basic interface', () => {
   let tempDir: string;
@@ -404,6 +405,114 @@ describe('proj CLI basic interface', () => {
       expect(fixParsed.fixedReport.allOk).toBe(true);
     } finally {
       process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs adopt CLI command to move desktop folders into canonical root with Git tracking', async () => {
+    const desktopSource = path.join(tempDir, 'desktop-legacy-proj');
+    fs.mkdirSync(desktopSource);
+    fs.writeFileSync(path.join(desktopSource, 'server.js'), 'console.log("server");');
+
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'adopt', desktopSource]);
+      expect(output).toContain('Successfully adopted project "desktop-legacy-proj"');
+      expect(fs.existsSync(path.join(projectsDir, 'desktop-legacy-proj', 'server.js'))).toBe(true);
+      expect(fs.existsSync(path.join(projectsDir, 'desktop-legacy-proj', 'AGENTS.md'))).toBe(true);
+      expect(fs.existsSync(desktopSource)).toBe(false);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs rules CLI command to view and edit master AGENTS.md rules', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      // 1. proj rules (defaults to view)
+      await program.parseAsync(['node', 'proj', 'rules']);
+      expect(output).toContain('Project Context & Coding Guidelines');
+
+      // 2. proj rules view
+      output = '';
+      await program.parseAsync(['node', 'proj', 'rules', 'view']);
+      expect(output).toContain('Project Context & Coding Guidelines');
+
+      // 3. proj rules edit
+      output = '';
+      await program.parseAsync(['node', 'proj', 'rules', 'edit']);
+      expect(output).toContain('Opening master AGENTS.md in VS Code');
+      const token = readIpcToken({ configDir: tempDir });
+      expect(token).toBeDefined();
+      expect(token?.action).toBe('code');
+      expect(token?.targetPath).toContain('AGENTS.md');
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs code CLI command and emits IPC token for VS Code', async () => {
+    // Scaffold test project
+    const testApp = path.join(projectsDir, 'code-target-app');
+    fs.mkdirSync(testApp);
+
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      // 1. proj code (no args -> current directory)
+      await program.parseAsync(['node', 'proj', 'code']);
+      expect(output).toContain('Opening current directory in VS Code');
+      let token = readIpcToken({ configDir: tempDir });
+      expect(token?.action).toBe('code');
+      expect(token?.targetPath).toBe(process.cwd());
+
+      // 2. proj code <name> -> opens named project
+      output = '';
+      await program.parseAsync(['node', 'proj', 'code', 'code-target-app']);
+      expect(output).toContain('Opening project "code-target-app" in VS Code');
+      token = readIpcToken({ configDir: tempDir });
+      expect(token?.action).toBe('code');
+      expect(token?.targetPath).toBe(testApp);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('handles code CLI command with non-existent project name gracefully', async () => {
+    const program = createProgram();
+    let errOutput = '';
+    const originalErr = process.stderr.write;
+    process.stderr.write = ((chunk: any) => {
+      errOutput += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'code', 'non-existent-proj-xyz']);
+      expect(errOutput).toContain('not found in workspace');
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.stderr.write = originalErr;
+      process.exitCode = 0;
     }
   });
 });
