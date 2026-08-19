@@ -1,8 +1,15 @@
 import { Command } from 'commander';
 import { fileURLToPath } from 'node:url';
+import { getConfig } from './config/index.js';
+import {
+  listProjects,
+  formatProjectsTable,
+  formatProjectsJson,
+} from './engine/index.js';
 
 export * from './config/index.js';
 export * from './ipc/index.js';
+export * from './engine/index.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -11,6 +18,24 @@ export function createProgram(): Command {
     .name('proj')
     .description('TypeScript CLI for Developer Workspace & Local Git Project Management')
     .version('0.1.0');
+
+  program
+    .command('list')
+    .alias('ls')
+    .description('List and inspect workspace projects and scratchpads')
+    .option('--json', 'Output project list in JSON format')
+    .action(async (options: { json?: boolean }) => {
+      const config = getConfig();
+      const projects = await listProjects(config.projectsRoot, {
+        throwawaysRoot: config.throwawaysRoot,
+      });
+
+      if (options.json) {
+        process.stdout.write(formatProjectsJson(projects) + '\n');
+      } else {
+        process.stdout.write(formatProjectsTable(projects) + '\n');
+      }
+    });
 
   program.action(() => {
     program.outputHelp();
@@ -29,7 +54,11 @@ const isDirectExecution = (): boolean => {
   if (!process.argv[1]) return false;
   try {
     const scriptPath = fileURLToPath(import.meta.url);
-    return process.argv[1] === scriptPath || process.argv[1].endsWith('dist/index.js') || process.argv[1].endsWith('proj');
+    return (
+      process.argv[1] === scriptPath ||
+      process.argv[1].endsWith('dist/index.js') ||
+      process.argv[1].endsWith('proj')
+    );
   } catch {
     return false;
   }
