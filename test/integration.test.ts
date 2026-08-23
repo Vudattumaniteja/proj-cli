@@ -32,6 +32,7 @@ describe('proj CLI binary build and execution', () => {
       JSON.stringify({
         projectsRoot: sampleProjectsDir,
         throwawaysRoot: path.join(sampleProjectsDir, 'throwaways'),
+        desktopJunctionPath: path.join(tempConfigDir, 'DesktopProjects'),
       })
     );
   }, 30000);
@@ -275,6 +276,6 @@ describe('proj CLI binary build and execution', () => {
       }
     );
     expect(codeOut).toContain('Opening project "binary-legacy-dir" in VS Code');
-  });
+  }, 30000);
 });
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { simpleGit } from 'simple-git';
+import { getConfig } from '../config/index.js';
 import type { ProjectInfo, DiscoveryOptions } from './types.js';
 
 export * from './types.js';
@@ -120,11 +121,13 @@ export function getTemplateBadge(templateType: string | null): string {
  */
 export async function inspectProject(
   projectPath: string,
-  options?: { isThrowaway?: boolean }
+  options?: { isThrowaway?: boolean; expiresAt?: string; isExpired?: boolean }
 ): Promise<ProjectInfo> {
   const resolvedPath = path.resolve(projectPath);
   const name = path.basename(resolvedPath);
   const isThrowaway = options?.isThrowaway ?? false;
+  const expiresAt = options?.expiresAt;
+  const isExpired = options?.isExpired;
 
   let lastModified = new Date(0);
   try {
@@ -171,6 +174,8 @@ export async function inspectProject(
     templateBadge,
     lastModified,
     isThrowaway,
+    expiresAt,
+    isExpired,
   };
 }
 
@@ -185,6 +190,9 @@ export async function listProjects(
   const resolvedThrowawaysRoot = options?.throwawaysRoot
     ? path.resolve(options.throwawaysRoot)
     : path.join(resolvedCanonicalRoot, 'throwaways');
+
+  const config = getConfig({ configDir: options?.configDir });
+  const throwawaysMeta = config.throwaways || {};
 
   const results: ProjectInfo[] = [];
 
@@ -228,7 +236,16 @@ export async function listProjects(
       if (entry.name.startsWith('.')) continue;
 
       const fullPath = path.join(resolvedThrowawaysRoot, entry.name);
-      const info = await inspectProject(fullPath, { isThrowaway: true });
+      const record = throwawaysMeta[entry.name];
+      const isExpired = record
+        ? Date.now() > new Date(record.expiresAt).getTime()
+        : false;
+
+      const info = await inspectProject(fullPath, {
+        isThrowaway: true,
+        expiresAt: record?.expiresAt,
+        isExpired,
+      });
       results.push(info);
     }
   }
@@ -252,7 +269,11 @@ export function formatProjectsTable(projects: ProjectInfo[]): string {
   }
 
   const rows = projects.map((p) => {
-    const displayName = p.isThrowaway ? `${p.name} (throwaway)` : p.name;
+    const displayName = p.isThrowaway
+      ? p.isExpired
+        ? `${p.name} (throwaway: expired)`
+        : `${p.name} (throwaway)`
+      : p.name;
     const branch = p.isGit ? p.branch || 'HEAD' : '-';
     const status = p.isGit
       ? p.dirtyCount === 0
