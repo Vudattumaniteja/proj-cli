@@ -9,6 +9,7 @@ import {
   graduateThrowaway,
   extendThrowaway,
   deleteThrowaway,
+  isThrowawayExpired,
   type ThrowawayRecord,
 } from '../src/engine/throwaway.js';
 import { listProjects } from '../src/engine/discovery.js';
@@ -44,6 +45,41 @@ describe('Throwaway Scratchpad Lifecycle Engine', () => {
     if (fs.existsSync(tempRoot)) {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  describe('isThrowawayExpired()', () => {
+    it('returns true when current/reference time is past expiresAt', () => {
+      const record: ThrowawayRecord = {
+        name: 'test-scratch',
+        path: '/dummy/path',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        expiresAt: '2026-08-04T00:00:00.000Z',
+        ttlDays: 3,
+        template: 'minimal',
+      };
+
+      expect(isThrowawayExpired(record, new Date('2026-08-05T00:00:00.000Z'))).toBe(true);
+      expect(isThrowawayExpired(record, '2026-08-04T00:00:01.000Z')).toBe(true);
+    });
+
+    it('returns false when current/reference time is before expiresAt', () => {
+      const record: ThrowawayRecord = {
+        name: 'test-scratch',
+        path: '/dummy/path',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        expiresAt: '2026-08-04T00:00:00.000Z',
+        ttlDays: 3,
+        template: 'minimal',
+      };
+
+      expect(isThrowawayExpired(record, new Date('2026-08-02T00:00:00.000Z'))).toBe(false);
+      expect(isThrowawayExpired(record, '2026-08-03T23:59:59.000Z')).toBe(false);
+    });
+
+    it('returns false when record or expiresAt is missing', () => {
+      expect(isThrowawayExpired(undefined as unknown as ThrowawayRecord)).toBe(false);
+      expect(isThrowawayExpired({} as unknown as ThrowawayRecord)).toBe(false);
+    });
   });
 
   describe('createThrowaway()', () => {
@@ -196,7 +232,11 @@ describe('Throwaway Scratchpad Lifecycle Engine', () => {
         now: created,
       });
 
-      const updated = extendThrowaway('extend-target', 4, { configDir, throwawaysRoot: throwawaysDir });
+      const updated = extendThrowaway('extend-target', 4, {
+        configDir,
+        throwawaysRoot: throwawaysDir,
+        now: new Date('2026-08-20T12:00:00.000Z'),
+      });
       expect(updated.name).toBe('extend-target');
       expect(updated.ttlDays).toBe(7);
       expect(updated.expiresAt).toBe('2026-08-26T12:00:00.000Z');
@@ -204,6 +244,26 @@ describe('Throwaway Scratchpad Lifecycle Engine', () => {
       const config = getConfig({ configDir });
       expect(config.throwaways!['extend-target'].expiresAt).toBe('2026-08-26T12:00:00.000Z');
       expect(config.throwaways!['extend-target'].ttlDays).toBe(7);
+    });
+
+    it('guarantees new expiration date is in the future when extending an already-expired scratchpad', async () => {
+      const created = new Date('2026-08-01T12:00:00.000Z');
+      await createThrowaway('expired-target', 2, 'minimal', {
+        configDir,
+        throwawaysRoot: throwawaysDir,
+        now: created,
+      });
+
+      const extendNow = new Date('2026-08-10T12:00:00.000Z');
+      const updated = extendThrowaway('expired-target', 3, {
+        configDir,
+        throwawaysRoot: throwawaysDir,
+        now: extendNow,
+      });
+
+      expect(updated.name).toBe('expired-target');
+      expect(updated.ttlDays).toBe(5);
+      expect(updated.expiresAt).toBe('2026-08-13T12:00:00.000Z');
     });
 
     it('rejects extension for non-existent throwaways or invalid days', async () => {

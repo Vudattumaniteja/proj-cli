@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { simpleGit } from 'simple-git';
 import { getConfig } from '../config/index.js';
+import { isThrowawayExpired } from './throwaway.js';
 import type { ProjectInfo, DiscoveryOptions } from './types.js';
 
 export * from './types.js';
@@ -138,10 +139,9 @@ export async function inspectProject(
     try {
       const config = getConfig({ configDir: options?.configDir });
       const record = config.throwaways?.[name];
-      if (record?.expiresAt) {
+      if (record) {
         expiresAt = record.expiresAt;
-        const refTime = options?.now ? new Date(options.now).getTime() : Date.now();
-        isExpired = refTime > new Date(record.expiresAt).getTime();
+        isExpired = isThrowawayExpired(record, options?.now);
       }
     } catch {
       // Gracefully handle config errors
@@ -206,9 +206,21 @@ export async function listProjects(
   options?: DiscoveryOptions
 ): Promise<ProjectInfo[]> {
   const resolvedCanonicalRoot = path.resolve(canonicalRoot);
-  const resolvedThrowawaysRoot = options?.throwawaysRoot
-    ? path.resolve(options.throwawaysRoot)
-    : path.join(resolvedCanonicalRoot, 'throwaways');
+  let resolvedThrowawaysRoot: string;
+  if (options?.throwawaysRoot) {
+    resolvedThrowawaysRoot = path.resolve(options.throwawaysRoot);
+  } else if (options?.configDir) {
+    try {
+      const config = getConfig({ configDir: options.configDir });
+      resolvedThrowawaysRoot = config.throwawaysRoot
+        ? path.resolve(config.throwawaysRoot)
+        : path.join(resolvedCanonicalRoot, 'throwaways');
+    } catch {
+      resolvedThrowawaysRoot = path.join(resolvedCanonicalRoot, 'throwaways');
+    }
+  } else {
+    resolvedThrowawaysRoot = path.join(resolvedCanonicalRoot, 'throwaways');
+  }
 
   const results: ProjectInfo[] = [];
 

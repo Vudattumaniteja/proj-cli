@@ -105,6 +105,31 @@ describe('Project Discovery Engine', () => {
       expect(projects[0].isThrowaway).toBe(true);
     });
 
+    it('resolves throwawaysRoot from getConfig when throwawaysRoot option is omitted', async () => {
+      const customThrowaways = path.join(tempRoot, 'config-throwaways');
+      fs.mkdirSync(customThrowaways, { recursive: true });
+      fs.mkdirSync(path.join(customThrowaways, 'config-spike'));
+
+      const configDir = path.join(tempRoot, 'config-custom');
+      fs.mkdirSync(configDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(configDir, 'config.json'),
+        JSON.stringify({
+          projectsRoot: canonicalProjects,
+          throwawaysRoot: customThrowaways,
+        })
+      );
+
+      const projects = await listProjects(canonicalProjects, {
+        configDir,
+      });
+
+      expect(projects).toHaveLength(1);
+      expect(projects[0].name).toBe('config-spike');
+      expect(projects[0].isThrowaway).toBe(true);
+      expect(projects[0].path).toBe(path.resolve(path.join(customThrowaways, 'config-spike')));
+    });
+
     it('supports includeThrowaways = false to scan canonical root only', async () => {
       const proj1 = path.join(canonicalProjects, 'core-app');
       const scratch1 = path.join(throwawaysDir, 'proto');
