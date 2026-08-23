@@ -13,6 +13,10 @@ import {
   listProjects,
   scaffoldProject,
   createThrowaway,
+  checkExpiredThrowaways,
+  extendThrowaway,
+  deleteThrowaway,
+  graduateThrowaway,
   createCheckpoint,
   listCheckpoints,
   rollbackCheckpoint,
@@ -28,6 +32,7 @@ import { adoptProject } from '../engine/adopt.js';
 export interface TuiOptions {
   configDir?: string;
   cwd?: string;
+  now?: Date | string | number;
 }
 
 /**
@@ -547,10 +552,95 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
 }
 
 /**
+ * Evaluates and prompts the user for handling expired throwaway scratchpads on startup.
+ */
+export async function handleExpiredThrowaways(options?: TuiOptions): Promise<void> {
+  const expired = checkExpiredThrowaways({
+    configDir: options?.configDir,
+    now: options?.now,
+  });
+
+  if (expired.length === 0) {
+    return;
+  }
+
+  p.note(
+    `Found ${expired.length} expired throwaway scratchpad(s):\n${expired.map((e) => `• ${e.name} (expired: ${e.expiresAt})`).join('\n')}`,
+    'Expired Scratchpads Detected'
+  );
+
+  for (const record of expired) {
+    const action = await p.select({
+      message: `Action for expired scratchpad "${record.name}":`,
+      options: [
+        {
+          value: 'delete',
+          label: '🗑️ Delete',
+          hint: 'Permanently remove from disk and config',
+        },
+        {
+          value: 'extend',
+          label: '⏳ Extend (+3d)',
+          hint: 'Extend expiration by 3 days',
+        },
+        {
+          value: 'graduate',
+          label: '🎓 Graduate',
+          hint: 'Migrate to permanent project & init Git tracking',
+        },
+        {
+          value: 'skip',
+          label: '⏭️ Skip',
+          hint: 'Keep unchanged and continue',
+        },
+      ],
+    });
+
+    if (p.isCancel(action) || action === 'skip') {
+      continue;
+    }
+
+    if (action === 'delete') {
+      const s = p.spinner();
+      s.start(`Deleting throwaway "${record.name}"...`);
+      try {
+        deleteThrowaway(record.name, { configDir: options?.configDir });
+        s.stop(`Deleted throwaway "${record.name}".`);
+      } catch (err: any) {
+        s.stop(`Failed to delete "${record.name}".`);
+        p.log.error(err.message);
+      }
+    } else if (action === 'extend') {
+      const s = p.spinner();
+      s.start(`Extending throwaway "${record.name}" by 3 days...`);
+      try {
+        const updated = extendThrowaway(record.name, 3, { configDir: options?.configDir });
+        s.stop(`Extended "${record.name}" (new expiration: ${updated.expiresAt}).`);
+      } catch (err: any) {
+        s.stop(`Failed to extend "${record.name}".`);
+        p.log.error(err.message);
+      }
+    } else if (action === 'graduate') {
+      const s = p.spinner();
+      s.start(`Graduating throwaway "${record.name}" to canonical workspace...`);
+      try {
+        const grad = await graduateThrowaway(record.name, { configDir: options?.configDir });
+        s.stop(`Graduated "${record.name}" to ${grad.path}.`);
+      } catch (err: any) {
+        s.stop(`Failed to graduate "${record.name}".`);
+        p.log.error(err.message);
+      }
+    }
+  }
+}
+
+/**
  * Top-Level Clack TUI Dashboard Runner.
  */
 export async function launchInteractiveDashboard(options?: TuiOptions): Promise<void> {
   p.intro(pc.bgCyan(pc.black('  PROJ WORKSPACE DASHBOARD  ')));
+
+  await handleExpiredThrowaways(options);
 
   let running = true;
   while (running) {
