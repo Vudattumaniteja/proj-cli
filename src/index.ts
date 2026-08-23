@@ -431,10 +431,19 @@ const isDirectExecution = (): boolean => {
   if (!process.argv[1]) return false;
   try {
     const scriptPath = fileURLToPath(import.meta.url);
+    const normalizedArgv = path.resolve(process.argv[1]);
+    const normalizedScript = path.resolve(scriptPath);
+    const normalizedArgvSlash = process.argv[1].replace(/\\/g, '/');
     return (
-      process.argv[1] === scriptPath ||
-      process.argv[1].endsWith('dist/index.js') ||
-      process.argv[1].endsWith('proj')
+      normalizedArgv === normalizedScript ||
+      (fs.existsSync(normalizedArgv) &&
+        fs.existsSync(normalizedScript) &&
+        fs.realpathSync(normalizedArgv) === fs.realpathSync(normalizedScript)) ||
+      normalizedArgvSlash.endsWith('dist/index.js') ||
+      normalizedArgvSlash.endsWith('/proj') ||
+      normalizedArgvSlash.endsWith('/proj.cmd') ||
+      normalizedArgvSlash.endsWith('/proj.ps1') ||
+      normalizedArgvSlash.endsWith('bin/proj.js')
     );
   } catch {
     return false;
