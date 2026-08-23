@@ -147,17 +147,23 @@ export function getConfig(options?: ConfigOptions): ProjConfig {
   const projectsRoot =
     typeof rawConfig.projectsRoot === 'string' && rawConfig.projectsRoot.trim() !== ''
       ? rawConfig.projectsRoot
-      : defaults.projectsRoot;
+      : typeof rawConfig.canonicalRoot === 'string' && (rawConfig.canonicalRoot as string).trim() !== ''
+        ? (rawConfig.canonicalRoot as string)
+        : defaults.projectsRoot;
 
   const throwawaysRoot =
     typeof rawConfig.throwawaysRoot === 'string' && rawConfig.throwawaysRoot.trim() !== ''
       ? rawConfig.throwawaysRoot
-      : path.join(projectsRoot, 'throwaways');
+      : typeof rawConfig.throwawayRoot === 'string' && (rawConfig.throwawayRoot as string).trim() !== ''
+        ? (rawConfig.throwawayRoot as string)
+        : path.join(projectsRoot, 'throwaways');
 
   const desktopJunctionPath =
     typeof rawConfig.desktopJunctionPath === 'string' && rawConfig.desktopJunctionPath.trim() !== ''
       ? rawConfig.desktopJunctionPath
-      : defaults.desktopJunctionPath;
+      : typeof rawConfig.desktopJunction === 'string' && (rawConfig.desktopJunction as string).trim() !== ''
+        ? (rawConfig.desktopJunction as string)
+        : defaults.desktopJunctionPath;
 
   const defaultTtlDays =
     typeof rawConfig.defaultTtlDays === 'number' && rawConfig.defaultTtlDays > 0

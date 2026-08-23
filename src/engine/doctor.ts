@@ -13,7 +13,7 @@ import {
   DEFAULT_AGENTS_TEMPLATE_NAME,
   DEFAULT_GITIGNORE_TEMPLATE_NAME,
 } from '../config/index.js';
-import { writePowerShellWrapper } from '../ipc/index.js';
+import { writePowerShellWrapper, writeCmdWrapper } from '../ipc/index.js';
 
 export const MIN_GIT_VERSION = '2.20.0';
 
@@ -658,6 +658,17 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
   if (!fs.existsSync(wrapperScript)) {
     writePowerShellWrapper(wrapperScript, { configDir });
     repairActions.push(`Generated PowerShell IPC bridge wrapper script: ${wrapperScript}`);
+  } else {
+    writePowerShellWrapper(wrapperScript, { configDir });
+    repairActions.push(`Updated PowerShell IPC bridge wrapper script: ${wrapperScript}`);
+  }
+  const cmdWrapperScript = path.join(configDir, 'proj.cmd');
+  if (!fs.existsSync(cmdWrapperScript)) {
+    writeCmdWrapper(cmdWrapperScript, { configDir });
+    repairActions.push(`Generated CMD IPC bridge wrapper script: ${cmdWrapperScript}`);
+  } else {
+    writeCmdWrapper(cmdWrapperScript, { configDir });
+    repairActions.push(`Updated CMD IPC bridge wrapper script: ${cmdWrapperScript}`);
   }
 
   const fixedReport = await runDoctor(options);

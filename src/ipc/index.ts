@@ -1,10 +1,37 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { getConfigDir, getIpcFile } from '../config/paths.js';
-import type { IpcAction, IpcPayload, IpcOptions, PowerShellWrapperOptions } from './types.js';
+import type { IpcAction, IpcPayload, IpcOptions, PowerShellWrapperOptions, CmdWrapperOptions } from './types.js';
 
 export * from './types.js';
+
+/**
+ * Spawns VS Code directly in a detached process so it opens across all shells (CMD, PowerShell, Bash).
+ */
+export function openInEditor(targetPath: string): void {
+  try {
+    const resolvedPath = path.resolve(targetPath);
+    const isWin = process.platform === 'win32';
+    const child = isWin
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'code', resolvedPath], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+        })
+      : spawn('code', [resolvedPath], {
+          detached: true,
+          stdio: 'ignore',
+        });
+    child.on('error', () => {
+      // Gracefully handle if code executable is not found or fails to launch
+    });
+    child.unref();
+  } catch {
+    // If code is not found or fails to launch, fail gracefully
+  }
+}
 
 const VALID_ACTIONS = new Set<IpcAction>(['cd', 'code', 'none']);
 
@@ -145,8 +172,12 @@ export function generatePowerShellWrapper(options?: PowerShellWrapperOptions): s
 
   return `# PowerShell Wrapper Function for proj CLI
 function ${fnName} {
-    $bin = "${binName}"
-    & $bin $args
+    $bin = (Get-Command -CommandType Application "${binName}.cmd" -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if (-not $bin) {
+        $bin = (Get-Command -CommandType Application,ExternalScript "${binName}" -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "*$HOME\\.proj\\*" } | Select-Object -First 1).Source
+    }
+    if (-not $bin) { $bin = "${binName}.cmd" }
+    & $bin @args
     $exitCode = $LASTEXITCODE
 
     $configDir = ${configDirResolution}
@@ -161,14 +192,20 @@ function ${fnName} {
 
                 if ($token -and $token.action -and $token.targetPath) {
                     if ($token.action -eq "cd") {
-                        if (Test-Path $token.targetPath) {
-                            Set-Location -Path $token.targetPath
+                        if (Test-Path -LiteralPath $token.targetPath) {
+                            if (Test-Path -PathType Container -LiteralPath $token.targetPath) {
+                                Set-Location -LiteralPath $token.targetPath
+                            } else {
+                                Set-Location -LiteralPath (Split-Path -Parent $token.targetPath)
+                            }
                         }
                     } elseif ($token.action -eq "code") {
-                        if (Test-Path $token.targetPath) {
-                            Set-Location -Path $token.targetPath
+                        if (Test-Path -LiteralPath $token.targetPath) {
+                            if (Test-Path -PathType Container -LiteralPath $token.targetPath) {
+                                Set-Location -LiteralPath $token.targetPath
+                            }
                         }
-                        code $token.targetPath
+                        code "$($token.targetPath)"
                     }
                 }
             }
@@ -176,8 +213,6 @@ function ${fnName} {
             # Gracefully handle any IPC parsing or path errors
         }
     }
-
-    return $exitCode
 }
 `;
 }
@@ -203,6 +238,67 @@ export function writePowerShellWrapper(
   }
 
   const scriptContent = generatePowerShellWrapper(options);
+  fs.writeFileSync(destPath, scriptContent, 'utf8');
+
+  return destPath;
+}
+
+/**
+ * Generates the Windows CMD batch wrapper script (`proj.cmd`)
+ * that intercepts IPC tokens emitted by the CLI and performs in-terminal cd jumping.
+ */
+export function generateCmdWrapper(options?: CmdWrapperOptions): string {
+  const binName = options?.binName || 'proj';
+  const ipcPathExpr = options?.configDir
+    ? `path.resolve('${options.configDir.replace(/\\/g, '\\\\')}', 'ipc.json')`
+    : `path.join(process.env.USERPROFILE||'', '.proj', 'ipc.json')`;
+
+  return `@ECHO off
+SETLOCAL EnableDelayedExpansion
+SET "IPC_FILE=%USERPROFILE%\\.proj\\ipc.json"
+${options?.configDir ? `SET "IPC_FILE=${options.configDir}\\ipc.json"` : ''}
+
+${binName} %*
+SET "PROJ_EXIT=%ERRORLEVEL%"
+
+SET "JUMP_TARGET="
+IF EXIST "%IPC_FILE%" (
+  FOR /F "delims=" %%L IN ('node -e "const fs=require('fs'),path=require('path');try{const f=${ipcPathExpr};if(fs.existsSync(f)){const d=JSON.parse(fs.readFileSync(f,'utf8'));if(d.action==='cd'||d.action==='code')console.log(d.targetPath);}}catch(e){}"') DO (
+    SET "JUMP_TARGET=%%L"
+  )
+  DEL "%IPC_FILE%" 2>NUL
+)
+
+IF DEFINED JUMP_TARGET (
+  ENDLOCAL & (
+    IF EXIST "%JUMP_TARGET%\\*" (
+      cd /d "%JUMP_TARGET%"
+    )
+    exit /b %PROJ_EXIT%
+  )
+)
+
+ENDLOCAL & exit /b %PROJ_EXIT%
+`;
+}
+
+/**
+ * Writes the CMD batch wrapper script to disk.
+ * Defaults to `~/.proj/proj.cmd` (or custom configDir).
+ */
+export function writeCmdWrapper(
+  outputPath?: string,
+  options?: CmdWrapperOptions
+): string {
+  const destPath =
+    outputPath || path.join(getConfigDir(options?.configDir), 'proj.cmd');
+
+  const destDir = path.dirname(destPath);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  const scriptContent = generateCmdWrapper(options);
   fs.writeFileSync(destPath, scriptContent, 'utf8');
 
   return destPath;

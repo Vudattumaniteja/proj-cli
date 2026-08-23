@@ -7,8 +7,11 @@ import {
   readIpcToken,
   clearIpcToken,
   consumeIpcToken,
+  openInEditor,
   generatePowerShellWrapper,
   writePowerShellWrapper,
+  generateCmdWrapper,
+  writeCmdWrapper,
   type IpcPayload,
   type IpcAction,
 } from '../src/ipc/index.js';
@@ -185,13 +188,16 @@ describe('PowerShell IPC Bridge', () => {
       const script = generatePowerShellWrapper();
 
       expect(script).toContain('function proj {');
-      expect(script).toContain('& $bin $args');
+      expect(script).toContain('& $bin @args');
       expect(script).toContain('$LASTEXITCODE');
       expect(script).toContain('ipc.json');
       expect(script).toContain('ConvertFrom-Json');
       expect(script).toContain('Set-Location');
       expect(script).toContain('code');
       expect(script).toContain('Remove-Item');
+      expect(script).toContain('-PathType Container');
+      expect(script).toContain('-LiteralPath');
+      expect(script).toContain('code "$($token.targetPath)"');
     });
 
     it('supports custom function and binary names in generatePowerShellWrapper', () => {
@@ -201,7 +207,7 @@ describe('PowerShell IPC Bridge', () => {
       });
 
       expect(script).toContain('function myproj {');
-      expect(script).toContain('$bin = "myproj-bin"');
+      expect(script).toContain('myproj-bin');
     });
 
     it('supports custom config directory in generatePowerShellWrapper', () => {
@@ -229,6 +235,43 @@ describe('PowerShell IPC Bridge', () => {
 
       expect(writtenPath).toBe(path.join(tempDir, 'proj.ps1'));
       expect(fs.existsSync(writtenPath)).toBe(true);
+    });
+  });
+
+  describe('CMD Wrapper Generation', () => {
+    it('generateCmdWrapper produces valid batch script with IPC handling', () => {
+      const script = generateCmdWrapper();
+
+      expect(script).toContain('@ECHO off');
+      expect(script).toContain('IPC_FILE');
+      expect(script).toContain('ipc.json');
+      expect(script).toContain('JUMP_TARGET');
+    });
+
+    it('writeCmdWrapper writes the script to disk', () => {
+      const targetScriptPath = path.join(tempDir, 'proj.cmd');
+      const writtenPath = writeCmdWrapper(targetScriptPath);
+
+      expect(writtenPath).toBe(targetScriptPath);
+      expect(fs.existsSync(targetScriptPath)).toBe(true);
+
+      const content = fs.readFileSync(targetScriptPath, 'utf8');
+      expect(content).toContain('@ECHO off');
+    });
+  });
+
+  describe('openInEditor()', () => {
+    it('executes openInEditor without throwing errors for directory and file targets', () => {
+      expect(() => openInEditor(tempDir)).not.toThrow();
+      const testFile = path.join(tempDir, 'AGENTS.md');
+      fs.writeFileSync(testFile, '# Test Agents', 'utf8');
+      expect(() => openInEditor(testFile)).not.toThrow();
+    });
+
+    it('handles paths with spaces safely', () => {
+      const spaceDir = path.join(tempDir, 'folder with spaces');
+      fs.mkdirSync(spaceDir);
+      expect(() => openInEditor(spaceDir)).not.toThrow();
     });
   });
 
