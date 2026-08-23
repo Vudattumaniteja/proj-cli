@@ -23,6 +23,7 @@ describe('proj CLI basic interface', () => {
     updateConfig({
       projectsRoot: projectsDir,
       throwawaysRoot: throwawaysDir,
+      desktopJunctionPath: path.join(tempDir, 'Desktop', 'Projects'),
     });
   });
 

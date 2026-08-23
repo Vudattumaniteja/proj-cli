@@ -32,6 +32,7 @@ describe('proj CLI binary build and execution', () => {
       JSON.stringify({
         projectsRoot: sampleProjectsDir,
         throwawaysRoot: path.join(sampleProjectsDir, 'throwaways'),
+        desktopJunctionPath: path.join(tempConfigDir, 'Desktop', 'Projects'),
       })
     );
   }, 30000);
