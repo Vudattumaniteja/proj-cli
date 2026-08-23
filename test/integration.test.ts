@@ -155,6 +155,49 @@ describe('proj CLI binary build and execution', () => {
     expect(found.isGit).toBe(true);
   });
 
+  it('executes dist/index.js expired -d and prune-expired commands via CLI binary', async () => {
+    const throwawaysDir = path.join(sampleProjectsDir, 'throwaways');
+
+    // 1. Check expired with none expired
+    const { stdout: noneOut } = await execa(
+      'node',
+      [distIndex, 'expired', '-d'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(noneOut).toContain('No expired throwaways found.');
+
+    // 2. Create an expired scratchpad
+    const expDir = path.join(throwawaysDir, 'binary-exp-1');
+    fs.mkdirSync(expDir, { recursive: true });
+    const configPath = path.join(tempConfigDir, 'config.json');
+    const existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    existingConfig.throwaways = {
+      ...(existingConfig.throwaways || {}),
+      'binary-exp-1': {
+        name: 'binary-exp-1',
+        path: expDir,
+        createdAt: '2020-01-01T00:00:00.000Z',
+        expiresAt: '2020-01-02T00:00:00.000Z',
+        ttlDays: 1,
+        template: 'minimal',
+      },
+    };
+    fs.writeFileSync(configPath, JSON.stringify(existingConfig));
+
+    // 3. Run prune-expired -d
+    const { stdout: pruneOut } = await execa(
+      'node',
+      [distIndex, 'prune-expired', '-d'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(pruneOut).toContain('Successfully deleted throwaway "binary-exp-1"');
+    expect(fs.existsSync(expDir)).toBe(false);
+  });
+
   it('executes dist/index.js checkpoint, checkpoints, and undo binary commands on a Git project', async () => {
     const projPath = path.join(sampleProjectsDir, 'binary-scratch-app');
 

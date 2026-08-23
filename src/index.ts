@@ -195,11 +195,25 @@ export function createProgram(): Command {
 
   program
     .command('expired')
-    .description('List expired throwaway scratchpads')
+    .alias('prune-expired')
+    .description('List or batch delete expired throwaway scratchpads')
+    .option('-d, --delete', 'Delete all expired throwaway scratchpads')
     .option('--json', 'Output expired list in JSON format')
-    .action((options: { json?: boolean }) => {
+    .action(async (options: { delete?: boolean; json?: boolean }) => {
       try {
         const expired = checkExpiredThrowaways();
+        if (options.delete) {
+          if (expired.length === 0) {
+            process.stdout.write('No expired throwaways found.\n');
+            return;
+          }
+          for (const exp of expired) {
+            const result = deleteThrowaway(exp.name);
+            process.stdout.write(`Successfully deleted throwaway "${result.name}"\n`);
+          }
+          return;
+        }
+
         if (options.json) {
           process.stdout.write(JSON.stringify(expired, null, 2) + '\n');
         } else if (expired.length === 0) {
