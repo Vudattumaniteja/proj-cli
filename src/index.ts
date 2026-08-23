@@ -58,6 +58,22 @@ export function createProgram(): Command {
     .option('-i, --interactive', 'Launch interactive Clack TUI dashboard');
 
   program
+    .command('init')
+    .description('Initialize workspace directories, config, PowerShell IPC bridge, and Desktop Junction')
+    .action(async () => {
+      try {
+        const fixReport = await fixDoctorIssues();
+        process.stdout.write(formatDoctorFixReport(fixReport) + '\n');
+        if (fixReport.fixedReport.errorCount > 0) {
+          process.exitCode = 1;
+        }
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
     .command('new [name]')
     .alias('create')
     .description('Scaffold a new project repository with agent guardrails and Git snapshot')
@@ -332,6 +348,46 @@ export function createProgram(): Command {
         process.stderr.write(
           `Error: Unknown rules action "${action}". Must be "view" or "edit".\n`
         );
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('cd [name]')
+    .alias('jump')
+    .description('Emit IPC token to navigate shell to target workspace project, throwaway, or workspace root')
+    .action(async (name?: string) => {
+      try {
+        const config = getConfig();
+        if (!name) {
+          emitIpcToken('cd', config.projectsRoot);
+          process.stdout.write(`Jumping to workspace root at ${config.projectsRoot}\n`);
+          return;
+        }
+
+        const candidate1 = path.join(config.projectsRoot, name);
+        const candidate2 = path.join(config.throwawaysRoot, name);
+        const candidate3 = path.resolve(name);
+
+        let targetPath: string | null = null;
+        if (fs.existsSync(candidate1)) {
+          targetPath = candidate1;
+        } else if (fs.existsSync(candidate2)) {
+          targetPath = candidate2;
+        } else if (fs.existsSync(candidate3)) {
+          targetPath = candidate3;
+        }
+
+        if (!targetPath) {
+          process.stderr.write(`Error: Project "${name}" not found in workspace\n`);
+          process.exitCode = 1;
+          return;
+        }
+
+        emitIpcToken('cd', targetPath);
+        process.stdout.write(`Jumping to project "${name}" at ${targetPath}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });

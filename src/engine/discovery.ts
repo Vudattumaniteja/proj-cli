@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { simpleGit } from 'simple-git';
 import { getConfig } from '../config/index.js';
-import { isThrowawayExpired } from './throwaway.js';
+import { isThrowawayExpired, findThrowawayEntry } from './throwaway.js';
 import type { ProjectInfo, DiscoveryOptions } from './types.js';
 
 export * from './types.js';
@@ -138,7 +138,7 @@ export async function inspectProject(
   if (isThrowaway) {
     try {
       const config = getConfig({ configDir: options?.configDir });
-      const record = config.throwaways?.[name];
+      const record = findThrowawayEntry(config.throwaways, name)?.record;
       if (record) {
         expiresAt = record.expiresAt;
         isExpired = isThrowawayExpired(record, options?.now);

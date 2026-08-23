@@ -103,6 +103,62 @@ export async function createThrowaway(
 }
 
 /**
+ * Helper to look up a throwaway entry from config dictionary by key OR record.name.
+ * Returns the dictionary key and record, or null if not found.
+ */
+export function findThrowawayEntry(
+  throwaways: Record<string, ThrowawayRecord> | undefined,
+  name: string
+): { key: string; record: ThrowawayRecord } | null {
+  if (!throwaways || typeof throwaways !== 'object') {
+    return null;
+  }
+
+  const trimmed = name.trim();
+
+  // 1. Direct key lookup
+  if (throwaways[trimmed] && typeof throwaways[trimmed] === 'object') {
+    const rec = throwaways[trimmed];
+    return {
+      key: trimmed,
+      record: {
+        ...rec,
+        name: rec.name || trimmed,
+      },
+    };
+  }
+
+  // 2. Lookup by record.name or case-insensitive match
+  for (const [key, rec] of Object.entries(throwaways)) {
+    if (rec && typeof rec === 'object') {
+      if (rec.name === trimmed || key === trimmed) {
+        return {
+          key,
+          record: {
+            ...rec,
+            name: rec.name || key,
+          },
+        };
+      }
+      if (
+        (typeof rec.name === 'string' && rec.name.toLowerCase() === trimmed.toLowerCase()) ||
+        key.toLowerCase() === trimmed.toLowerCase()
+      ) {
+        return {
+          key,
+          record: {
+            ...rec,
+            name: rec.name || key,
+          },
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Checks whether a throwaway scratchpad record has expired given a reference time.
  */
 export function isThrowawayExpired(
@@ -128,7 +184,14 @@ export function checkExpiredThrowaways(
 
   const expired: ThrowawayRecord[] = [];
 
-  for (const record of Object.values(throwaways)) {
+  for (const [key, rawRecord] of Object.entries(throwaways)) {
+    if (!rawRecord || typeof rawRecord !== 'object') {
+      continue;
+    }
+    const record: ThrowawayRecord = {
+      ...rawRecord,
+      name: rawRecord.name || key,
+    };
     if (isThrowawayExpired(record, options?.now)) {
       expired.push(record);
     }
@@ -154,12 +217,13 @@ export function extendThrowaway(
   const trimmedName = name.trim();
   const config = getConfig({ configDir: options?.configDir });
   const throwaways = config.throwaways || {};
-  const record = throwaways[trimmedName];
+  const found = findThrowawayEntry(throwaways, trimmedName);
 
-  if (!record) {
+  if (!found) {
     throw new Error(`Throwaway "${trimmedName}" not found in configuration`);
   }
 
+  const { key: foundKey, record } = found;
   const nowTime = options?.now !== undefined ? new Date(options.now).getTime() : Date.now();
   const currentExpiresTime = new Date(record.expiresAt).getTime();
   const baseTime = Math.max(nowTime, currentExpiresTime);
@@ -167,18 +231,23 @@ export function extendThrowaway(
     baseTime + days * 24 * 60 * 60 * 1000
   ).toISOString();
 
+  const effectiveName = record.name || trimmedName;
   const updatedRecord: ThrowawayRecord = {
     ...record,
-    ttlDays: record.ttlDays + days,
+    name: effectiveName,
+    ttlDays: (record.ttlDays || 0) + days,
     expiresAt: newExpiresAt,
   };
 
+  const updatedThrowaways = { ...throwaways };
+  if (foundKey !== effectiveName) {
+    delete updatedThrowaways[foundKey];
+  }
+  updatedThrowaways[effectiveName] = updatedRecord;
+
   updateConfig(
     {
-      throwaways: {
-        ...throwaways,
-        [trimmedName]: updatedRecord,
-      },
+      throwaways: updatedThrowaways,
     },
     { configDir: options?.configDir }
   );
@@ -201,31 +270,52 @@ export function deleteThrowaway(
     ? path.resolve(options.throwawaysRoot)
     : path.resolve(config.throwawaysRoot);
 
-  const projectPath = path.join(throwawaysRoot, trimmedName);
-  const record = config.throwaways?.[trimmedName];
+  const found = findThrowawayEntry(config.throwaways, trimmedName);
+  const projectPath = found?.record?.path
+    ? path.resolve(found.record.path)
+    : path.join(throwawaysRoot, trimmedName);
+
   const dirExists = fs.existsSync(projectPath);
 
-  if (!dirExists && !record) {
+  if (!dirExists && !found) {
     throw new Error(`Throwaway "${trimmedName}" does not exist`);
   }
 
   if (dirExists) {
-    fs.rmSync(projectPath, { recursive: true, force: true });
+    try {
+      fs.rmSync(projectPath, { recursive: true, force: true });
+    } catch {
+      // Gracefully handle file removal error
+    }
   }
 
-  if (record) {
+  if (config.throwaways) {
     const updatedThrowaways = { ...config.throwaways };
-    delete updatedThrowaways[trimmedName];
-    updateConfig(
-      {
-        throwaways: updatedThrowaways,
-      },
-      { configDir: options?.configDir }
-    );
+    let changed = false;
+    if (found?.key && updatedThrowaways[found.key] !== undefined) {
+      delete updatedThrowaways[found.key];
+      changed = true;
+    }
+    if (updatedThrowaways[trimmedName] !== undefined) {
+      delete updatedThrowaways[trimmedName];
+      changed = true;
+    }
+    if (found?.record?.name && updatedThrowaways[found.record.name] !== undefined) {
+      delete updatedThrowaways[found.record.name];
+      changed = true;
+    }
+    if (changed) {
+      updateConfig(
+        {
+          throwaways: updatedThrowaways,
+        },
+        { configDir: options?.configDir }
+      );
+    }
   }
 
   return {
-    name: trimmedName,
+    name: found?.record?.name || trimmedName,
     path: projectPath,
     deleted: true,
   };
@@ -251,18 +341,22 @@ export async function graduateThrowaway(
     ? path.resolve(options.projectsRoot)
     : path.resolve(config.projectsRoot);
 
-  const srcPath = path.join(throwawaysRoot, trimmedName);
-  const destPath = path.join(projectsRoot, trimmedName);
+  const found = findThrowawayEntry(config.throwaways, trimmedName);
+  const effectiveName = found?.record?.name || trimmedName;
+  const srcPath = found?.record?.path
+    ? path.resolve(found.record.path)
+    : path.join(throwawaysRoot, effectiveName);
+  const destPath = path.join(projectsRoot, effectiveName);
 
   if (!fs.existsSync(srcPath)) {
     throw new Error(
-      `Cannot graduate throwaway "${trimmedName}": scratchpad does not exist at ${srcPath}`
+      `Cannot graduate throwaway "${effectiveName}": scratchpad does not exist at ${srcPath}`
     );
   }
 
   if (fs.existsSync(destPath)) {
     throw new Error(
-      `Cannot graduate throwaway "${trimmedName}": destination path already exists at ${destPath}`
+      `Cannot graduate throwaway "${effectiveName}": destination path already exists at ${destPath}`
     );
   }
 
@@ -303,19 +397,33 @@ export async function graduateThrowaway(
   }
 
   // Purge scratchpad metadata from config.json
-  if (config.throwaways && config.throwaways[trimmedName]) {
+  if (config.throwaways) {
     const updatedThrowaways = { ...config.throwaways };
-    delete updatedThrowaways[trimmedName];
-    updateConfig(
-      {
-        throwaways: updatedThrowaways,
-      },
-      { configDir: options?.configDir }
-    );
+    let changed = false;
+    if (found?.key && updatedThrowaways[found.key] !== undefined) {
+      delete updatedThrowaways[found.key];
+      changed = true;
+    }
+    if (updatedThrowaways[effectiveName] !== undefined) {
+      delete updatedThrowaways[effectiveName];
+      changed = true;
+    }
+    if (updatedThrowaways[trimmedName] !== undefined) {
+      delete updatedThrowaways[trimmedName];
+      changed = true;
+    }
+    if (changed) {
+      updateConfig(
+        {
+          throwaways: updatedThrowaways,
+        },
+        { configDir: options?.configDir }
+      );
+    }
   }
 
   return {
-    name: trimmedName,
+    name: effectiveName,
     path: destPath,
     previousPath: srcPath,
     isGit: true,

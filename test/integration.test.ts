@@ -318,6 +318,27 @@ describe('proj CLI binary build and execution', () => {
       }
     );
     expect(codeOut).toContain('Opening project "binary-legacy-dir" in VS Code');
+
+    // 5. cd
+    const { stdout: cdOut } = await execa(
+      'node',
+      [distIndex, 'cd', 'binary-legacy-dir'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(cdOut).toContain('Jumping to project "binary-legacy-dir"');
+
+    // 6. jump (alias with no args -> root)
+    const { stdout: jumpRootOut } = await execa(
+      'node',
+      [distIndex, 'jump'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(jumpRootOut).toContain(`Jumping to workspace root at ${sampleProjectsDir}`);
   });
 });
+
 

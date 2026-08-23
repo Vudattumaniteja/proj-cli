@@ -42,7 +42,7 @@ export interface TuiOptions {
  */
 export async function interactiveNewProject(
   options?: TuiOptions & { initialName?: string }
-): Promise<void> {
+): Promise<'exit' | void> {
   let name = options?.initialName;
   if (!name) {
     const enteredName = await p.text({
@@ -115,9 +115,11 @@ export async function interactiveNewProject(
       if (nextAction === 'code') {
         emitIpcToken('code', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        return 'exit';
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
+        return 'exit';
       }
     }
   } catch (err: unknown) {
@@ -131,7 +133,7 @@ export async function interactiveNewProject(
  */
 export async function interactiveThrowaway(
   options?: TuiOptions & { initialName?: string }
-): Promise<void> {
+): Promise<'exit' | void> {
   let name = options?.initialName;
   if (!name) {
     const enteredName = await p.text({
@@ -211,9 +213,11 @@ export async function interactiveThrowaway(
       if (nextAction === 'code') {
         emitIpcToken('code', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        return 'exit';
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
+        return 'exit';
       }
     }
   } catch (err: unknown) {
@@ -578,7 +582,7 @@ export async function interactiveDoctor(options?: TuiOptions): Promise<void> {
 /**
  * Interactive folder adoption wizard.
  */
-export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
+export async function interactiveAdopt(options?: TuiOptions): Promise<'exit' | void> {
   const folderPath = await p.text({
     message: 'Enter folder path to adopt into canonical workspace:',
     placeholder: 'C:\\Users\\User\\Desktop\\legacy-app',
@@ -619,9 +623,11 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
       if (nextAction === 'code') {
         emitIpcToken('code', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        return 'exit';
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
+        return 'exit';
       }
     }
   } catch (err: unknown) {
@@ -788,12 +794,20 @@ export async function launchInteractiveDashboard(options?: TuiOptions): Promise<
         }
         break;
       }
-      case 'new':
-        await interactiveNewProject(options);
+      case 'new': {
+        const result = await interactiveNewProject(options);
+        if (result === 'exit') {
+          running = false;
+        }
         break;
-      case 'scratch':
-        await interactiveThrowaway(options);
+      }
+      case 'scratch': {
+        const result = await interactiveThrowaway(options);
+        if (result === 'exit') {
+          running = false;
+        }
         break;
+      }
       case 'checkpoint': {
         const msg = await p.text({
           message: 'Enter checkpoint message:',
@@ -816,9 +830,13 @@ export async function launchInteractiveDashboard(options?: TuiOptions): Promise<
       case 'undo':
         await interactiveRollback(options?.cwd || process.cwd(), options);
         break;
-      case 'adopt':
-        await interactiveAdopt(options);
+      case 'adopt': {
+        const result = await interactiveAdopt(options);
+        if (result === 'exit') {
+          running = false;
+        }
         break;
+      }
       case 'rules':
         await interactiveRules(options);
         break;

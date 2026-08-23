@@ -9,8 +9,11 @@ import {
   consumeIpcToken,
   generatePowerShellWrapper,
   writePowerShellWrapper,
+  generateCmdWrapper,
+  writeCmdWrapper,
   type IpcPayload,
   type IpcAction,
+  type CmdWrapperOptions,
 } from '../src/ipc/index.js';
 import { getIpcFile } from '../src/config/paths.js';
 
@@ -228,6 +231,66 @@ describe('PowerShell IPC Bridge', () => {
       const writtenPath = writePowerShellWrapper();
 
       expect(writtenPath).toBe(path.join(tempDir, 'proj.ps1'));
+      expect(fs.existsSync(writtenPath)).toBe(true);
+    });
+  });
+
+  describe('CMD Wrapper Generation', () => {
+    it('generateCmdWrapper produces valid CMD batch wrapper script', () => {
+      const script = generateCmdWrapper();
+
+      expect(script).toContain('@ECHO off');
+      expect(script).toContain('SETLOCAL EnableDelayedExpansion');
+      expect(script).toContain('ipc.json');
+      expect(script).toContain('cd /d');
+      expect(script).toContain('DEL "%IPC_FILE%"');
+      expect(script).toContain('exit /b %PROJ_EXIT%');
+    });
+
+    it('generateCmdWrapper supports isNpmShim option', () => {
+      const script = generateCmdWrapper({ isNpmShim: true });
+
+      expect(script).toContain('"%_prog%"');
+      expect(script).toContain('node_modules\\proj-cli\\dist\\index.js');
+      expect(script).toContain('cd /d');
+      expect(script).toContain('DEL "%IPC_FILE%"');
+    });
+
+    it('generateCmdWrapper supports custom binary name and config directory', () => {
+      const customConfigDir = 'C:\\Custom\\.proj';
+      const script = generateCmdWrapper({
+        binName: 'myproj',
+        configDir: customConfigDir,
+      });
+
+      expect(script).toContain('C:\\Custom\\.proj\\ipc.json');
+      expect(script).toContain('call myproj %*');
+    });
+
+    it('generateCmdWrapper supports custom targetJs path', () => {
+      const script = generateCmdWrapper({
+        targetJs: 'C:\\custom\\dist\\index.js',
+      });
+
+      expect(script).toContain('node "C:\\custom\\dist\\index.js" %*');
+    });
+
+    it('writeCmdWrapper writes the script to disk', () => {
+      const targetScriptPath = path.join(tempDir, 'proj.cmd');
+      const writtenPath = writeCmdWrapper(targetScriptPath);
+
+      expect(writtenPath).toBe(targetScriptPath);
+      expect(fs.existsSync(targetScriptPath)).toBe(true);
+
+      const content = fs.readFileSync(targetScriptPath, 'utf8');
+      expect(content).toContain('cd /d');
+      expect(content).toContain('ipc.json');
+    });
+
+    it('writeCmdWrapper defaults to ~/.proj/proj.cmd (or configDir/proj.cmd)', () => {
+      const writtenPath = writeCmdWrapper();
+
+      expect(writtenPath).toBe(path.join(tempDir, 'proj.cmd'));
       expect(fs.existsSync(writtenPath)).toBe(true);
     });
   });

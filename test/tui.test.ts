@@ -94,7 +94,8 @@ describe('Clack TUI Dashboard & Interactive Wizards', () => {
     // 3. Select prompt: next step
     vi.mocked(p.select).mockResolvedValueOnce('code');
 
-    await interactiveNewProject({ configDir: tempDir });
+    const result = await interactiveNewProject({ configDir: tempDir });
+    expect(result).toBe('exit');
 
     const createdPath = path.join(projectsDir, 'tui-created-app');
     expect(fs.existsSync(createdPath)).toBe(true);
@@ -116,7 +117,8 @@ describe('Clack TUI Dashboard & Interactive Wizards', () => {
     // 4. Next action
     vi.mocked(p.select).mockResolvedValueOnce('jump');
 
-    await interactiveThrowaway({ configDir: tempDir });
+    const result = await interactiveThrowaway({ configDir: tempDir });
+    expect(result).toBe('exit');
 
     const scratchPath = path.join(throwawaysDir, 'tui-scratch-app');
     expect(fs.existsSync(scratchPath)).toBe(true);

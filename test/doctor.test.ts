@@ -12,7 +12,7 @@ import {
   compareVersions,
 } from '../src/engine/doctor.js';
 import { ensureConfigDirs } from '../src/config/index.js';
-import { writePowerShellWrapper } from '../src/ipc/index.js';
+import { writePowerShellWrapper, writeCmdWrapper } from '../src/ipc/index.js';
 
 describe('Doctor Diagnostic & Self-Healing Engine', () => {
   let tempDir: string;
@@ -147,6 +147,7 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
     it('returns fully healthy report when environment is properly configured', async () => {
       ensureConfigDirs({ configDir: customConfigDir });
       writePowerShellWrapper(undefined, { configDir: customConfigDir });
+      writeCmdWrapper(undefined, { configDir: customConfigDir });
       repairJunction(customDesktopJunction, customProjectsRoot);
 
       const report = await runDoctor({
@@ -269,6 +270,7 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
       expect(fs.existsSync(path.join(emptyConfigDir, 'config.json'))).toBe(true);
       expect(fs.existsSync(path.join(emptyConfigDir, 'templates', 'AGENTS.md'))).toBe(true);
       expect(fs.existsSync(path.join(emptyConfigDir, 'proj.ps1'))).toBe(true);
+      expect(fs.existsSync(path.join(emptyConfigDir, 'proj.cmd'))).toBe(true);
 
       const junctionStatus = verifyJunction(missingJunction, missingProjects);
       expect(junctionStatus.valid).toBe(true);
@@ -279,6 +281,7 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
     it('formats healthy report with checkmarks and summary', async () => {
       ensureConfigDirs({ configDir: customConfigDir });
       writePowerShellWrapper(undefined, { configDir: customConfigDir });
+      writeCmdWrapper(undefined, { configDir: customConfigDir });
       repairJunction(customDesktopJunction, customProjectsRoot);
 
       const report = await runDoctor({
