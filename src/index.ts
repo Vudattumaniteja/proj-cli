@@ -8,7 +8,7 @@ import {
   getTemplatesDir,
   DEFAULT_AGENTS_TEMPLATE_NAME,
 } from './config/index.js';
-import { emitIpcToken } from './ipc/index.js';
+import { emitIpcToken, openInEditor } from './ipc/index.js';
 import {
   listProjects,
   formatProjectsTable,
@@ -195,11 +195,25 @@ export function createProgram(): Command {
 
   program
     .command('expired')
-    .description('List expired throwaway scratchpads')
+    .alias('prune-expired')
+    .description('List and optionally prune expired throwaway scratchpads')
     .option('--json', 'Output expired list in JSON format')
-    .action((options: { json?: boolean }) => {
+    .option('-d, --delete', 'Automatically delete all expired throwaway scratchpads')
+    .action((options: { json?: boolean; delete?: boolean }) => {
       try {
         const expired = checkExpiredThrowaways();
+        if (options.delete) {
+          if (expired.length === 0) {
+            process.stdout.write('No expired throwaways found to delete.\n');
+            return;
+          }
+          for (const exp of expired) {
+            deleteThrowaway(exp.name);
+            process.stdout.write(`Successfully deleted expired throwaway "${exp.name}"\n`);
+          }
+          return;
+        }
+
         if (options.json) {
           process.stdout.write(JSON.stringify(expired, null, 2) + '\n');
         } else if (expired.length === 0) {
@@ -304,6 +318,7 @@ export function createProgram(): Command {
       const agentsPath = path.join(templatesDir, DEFAULT_AGENTS_TEMPLATE_NAME);
 
       if (normalized === 'edit') {
+        openInEditor(agentsPath);
         emitIpcToken('code', agentsPath);
         process.stdout.write(`Opening master AGENTS.md in VS Code at ${agentsPath}\n`);
       } else if (normalized === 'view') {
@@ -324,11 +339,12 @@ export function createProgram(): Command {
 
   program
     .command('code [name]')
-    .description('Emit IPC token to open target workspace project or current directory in VS Code')
+    .description('Open target workspace project or current directory in VS Code')
     .action(async (name?: string) => {
       try {
         if (!name) {
           const currentDir = process.cwd();
+          openInEditor(currentDir);
           emitIpcToken('code', currentDir);
           process.stdout.write(`Opening current directory in VS Code at ${currentDir}\n`);
           return;
@@ -354,6 +370,7 @@ export function createProgram(): Command {
           return;
         }
 
+        openInEditor(targetPath);
         emitIpcToken('code', targetPath);
         process.stdout.write(`Opening project "${name}" in VS Code at ${targetPath}\n`);
       } catch (err: any) {
@@ -417,10 +434,17 @@ const isDirectExecution = (): boolean => {
   if (!process.argv[1]) return false;
   try {
     const scriptPath = fileURLToPath(import.meta.url);
+    const normalizedArgv = path.resolve(process.argv[1]).toLowerCase();
+    const normalizedScript = path.resolve(scriptPath).toLowerCase();
+    const normalizedArgvSlash = process.argv[1].replace(/\\/g, '/');
+
     return (
-      process.argv[1] === scriptPath ||
-      process.argv[1].endsWith('dist/index.js') ||
-      process.argv[1].endsWith('proj')
+      normalizedArgv === normalizedScript ||
+      normalizedArgvSlash.endsWith('dist/index.js') ||
+      normalizedArgvSlash.endsWith('/proj') ||
+      normalizedArgvSlash.endsWith('/proj.cmd') ||
+      normalizedArgvSlash.endsWith('/proj.ps1') ||
+      normalizedArgvSlash.endsWith('src/index.ts')
     );
   } catch {
     return false;

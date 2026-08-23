@@ -5,6 +5,7 @@ import os from 'node:os';
 import { createProgram } from '../src/index.js';
 import { updateConfig } from '../src/config/index.js';
 import { readIpcToken } from '../src/ipc/index.js';
+import { createThrowaway } from '../src/engine/throwaway.js';
 
 describe('proj CLI basic interface', () => {
   let tempDir: string;
@@ -23,6 +24,7 @@ describe('proj CLI basic interface', () => {
     updateConfig({
       projectsRoot: projectsDir,
       throwawaysRoot: throwawaysDir,
+      desktopJunctionPath: path.join(tempDir, 'Desktop', 'Projects'),
     });
   });
 
@@ -316,6 +318,35 @@ describe('proj CLI basic interface', () => {
     try {
       await program.parseAsync(['node', 'proj', 'expired']);
       expect(output).toContain('No expired throwaways found');
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs expired --delete command and automatically prunes expired throwaways', async () => {
+    // Create an expired throwaway
+    const pastDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    await createThrowaway('cli-expired-scratch', 1, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+      now: pastDate,
+    });
+
+    const scratchPath = path.join(throwawaysDir, 'cli-expired-scratch');
+    expect(fs.existsSync(scratchPath)).toBe(true);
+
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'expired', '--delete']);
+      expect(output).toContain('Successfully deleted expired throwaway "cli-expired-scratch"');
+      expect(fs.existsSync(scratchPath)).toBe(false);
     } finally {
       process.stdout.write = originalWrite;
     }
