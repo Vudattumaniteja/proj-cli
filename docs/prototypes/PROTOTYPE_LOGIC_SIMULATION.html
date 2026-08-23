@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PROTOTYPE — proj CLI Workspace & Git Safety Engine</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --card-border: #30363d;
+      --text: #c9d1d9;
+      --text-dim: #8b949e;
+      --text-bright: #f0f6fc;
+      --accent: #58a6ff;
+      --accent-hover: #79b8ff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --purple: #bc8cff;
+      --font-mono: "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-primary { background: rgba(88, 166, 255, 0.15); color: var(--accent); border: 1px solid var(--accent); }
+    .badge-throwaway { background: rgba(248, 81, 73, 0.15); color: var(--danger); border: 1px solid var(--danger); }
+    .badge-offline { background: rgba(63, 185, 80, 0.15); color: var(--success); border: 1px solid var(--success); }
+
+    h1 {
+      font-size: 26px;
+      color: var(--text-bright);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .proto-question {
+      background: rgba(88, 166, 255, 0.08);
+      border-left: 4px solid var(--accent);
+      padding: 12px 16px;
+      border-radius: 0 6px 6px 0;
+      color: var(--text-bright);
+      font-size: 14.5px;
+      margin-top: 10px;
+    }
+
+    .proto-question strong {
+      color: var(--accent);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 8px;
+    }
+
+    .card-title span.tag {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: normal;
+      color: var(--text-dim);
+    }
+
+    /* Tabs for walkthroughs */
+    .tabs-nav {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 14px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-dim);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-bright);
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .walkthrough-box {
+      background: rgba(22, 27, 34, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 14px;
+    }
+
+    .walkthrough-box p {
+      font-size: 13.5px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0d1117;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+    }
+
+    .step-number {
+      width: 24px;
+      height: 24px;
+      background: #21262d;
+      color: var(--text-bright);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+
+    .step-desc {
+      flex: 1;
+      font-size: 13px;
+    }
+
+    .step-desc small {
+      display: block;
+      color: var(--text-dim);
+      font-size: 11.5px;
+      margin-top: 2px;
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: var(--font-sans);
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 7px 13px;
+      border-radius: 5px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-primary { background: #238636; color: #fff; border-color: rgba(240,246,252,0.1); }
+    .btn-primary:hover:not(:disabled) { background: #2ea043; }
+
+    .btn-action { background: #21262d; color: var(--text-bright); border-color: var(--card-border); }
+    .btn-action:hover:not(:disabled) { background: #30363d; border-color: #8b949e; }
+
+    .btn-danger { background: rgba(248, 81, 73, 0.15); color: var(--danger); border-color: rgba(248, 81, 73, 0.4); }
+    .btn-danger:hover:not(:disabled) { background: rgba(248, 81, 73, 0.3); }
+
+    .btn-warning { background: rgba(210, 153, 34, 0.15); color: var(--warning); border-color: rgba(210, 153, 34, 0.4); }
+    .btn-warning:hover:not(:disabled) { background: rgba(210, 153, 34, 0.3); }
+
+    .btn-purple { background: rgba(188, 140, 255, 0.15); color: var(--purple); border-color: rgba(188, 140, 255, 0.4); }
+    .btn-purple:hover:not(:disabled) { background: rgba(188, 140, 255, 0.3); }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 14px;
+      margin-bottom: 6px;
+    }
+
+    /* What Changed Alert Box */
+    .change-alert {
+      background: rgba(56, 139, 253, 0.1);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .change-alert-title {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      font-weight: bold;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .change-alert-desc {
+      font-size: 13.5px;
+      color: var(--text-bright);
+    }
+
+    /* Terminal Simulator */
+    .terminal {
+      background: #05070a;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      padding: 14px;
+      height: 240px;
+      overflow-y: auto;
+      color: #7ee787;
+      white-space: pre-wrap;
+    }
+
+    .terminal .term-cmd { color: #58a6ff; font-weight: bold; }
+    .terminal .term-dim { color: #8b949e; }
+    .terminal .term-warn { color: #d29922; }
+    .terminal .term-err { color: #f85149; }
+    .terminal .term-purple { color: #bc8cff; }
+
+    /* State Panels */
+    .state-panel {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: #090d13;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 12px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .state-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    }
+
+    .state-row:last-child {
+      border-bottom: none;
+    }
+
+    .state-key { color: var(--text-dim); }
+    .state-val { color: var(--text-bright); font-weight: 500; }
+    .state-val.highlight { color: var(--accent); }
+    .state-val.success { color: var(--success); }
+    .state-val.warning { color: var(--warning); }
+    .state-val.danger { color: var(--danger); }
+
+    .project-card {
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+
+    .project-card.active-project {
+      border-color: var(--accent);
+      background: rgba(88, 166, 255, 0.05);
+    }
+
+    .project-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .project-name {
+      font-weight: 600;
+      color: var(--text-bright);
+      font-size: 13px;
+    }
+
+    .commit-history {
+      margin-top: 8px;
+      padding-left: 8px;
+      border-left: 2px solid var(--card-border);
+      font-size: 11.5px;
+    }
+
+    .commit-node {
+      margin-bottom: 4px;
+      color: var(--text-dim);
+    }
+
+    .commit-node strong {
+      color: var(--purple);
+    }
+
+    .ipc-box {
+      background: rgba(188, 140, 255, 0.08);
+      border: 1px dashed var(--purple);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      margin-top: 10px;
+    }
+
+    .ipc-title {
+      font-size: 11px;
+      color: var(--purple);
+      font-weight: bold;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="badge-row">
+      <span class="badge badge-throwaway">PROTOTYPE — LOGIC ONLY</span>
+      <span class="badge badge-offline">100% OFFLINE LOCAL GIT</span>
+      <span class="badge badge-primary">CANONICAL WORKSPACE: C:\Users\Manit\projects</span>
+    </div>
+    <h1>⚡ proj CLI — Workspace & Git Safety Engine Simulator</h1>
+    <div class="proto-question">
+      <strong>Core Question Being Prototyped:</strong>
+      Does the local Git checkpoint/rollback engine (with safety stashes), throwaway lifecycle with startup expiration alerts, desktop junction bridge, and PowerShell IPC directory jumper provide an intuitive, airtight safety net when pair-programming with AI agents?
+    </div>
+  </header>
+
+  <!-- Live Change Banner -->
+  <div class="change-alert" id="changeAlert">
+    <div class="change-alert-title" id="changeTitle">INITIAL STATE LOADED</div>
+    <div class="change-alert-desc" id="changeDesc">System initialized with canonical workspace root and an empty sandbox. Choose a guided walkthrough or use free-play buttons below.</div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT COLUMN: WALKTHROUGHS & FREE-PLAY CONTROLS -->
+    <div>
+      <!-- Guided Scenarios (Tabs) -->
+      <div class="card">
+        <div class="card-title">
+          <span>🎯 Guided Walkthrough Scenarios</span>
+          <span class="tag">CLICK STEPS IN ORDER</span>
+        </div>
+
+        <div class="tabs-nav">
+          <button class="tab-btn active" onclick="switchTab('tab-agent-undo')">1. Agent Safety & Rollback</button>
+          <button class="tab-btn" onclick="switchTab('tab-throwaway')">2. Throwaway Lifecycle</button>
+          <button class="tab-btn" onclick="switchTab('tab-adopt')">3. Desktop Adoption</button>
+          <button class="tab-btn" onclick="switchTab('tab-doctor')">4. Doctor & Junction</button>
+          <button class="tab-btn" onclick="switchTab('tab-jump')">5. Terminal IPC Jump</button>
+        </div>
+
+        <!-- Walkthrough 1 -->
+        <div id="tab-agent-undo" class="tab-content active">
+          <div class="walkthrough-box">
+            <p><strong>Scenario:</strong> You scaffold a new TypeScript project. An AI agent does good work, which you checkpoint. Later, the agent hallucinates and breaks critical files. You run <code>proj undo</code> to restore the working checkpoint safely without losing work.</p>
+            <div class="steps-list">
+              <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-desc">
+                  <strong>Create Project `ai-auth-api`</strong>
+                  <small>Scaffolds universal .gitignore, AGENTS.md, Git init, initial commit.</small>
+                </div>
+                <button class="btn btn-primary" onclick="runStep(1, 1)">Execute</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-desc">
+                  <strong>Agent writes OAuth login logic (Clean Work)</strong>
+                  <small>Generates src/auth.ts and tests.</small>
+                </div>
+                <button class="btn btn-action" onclick="runStep(1, 2)">Execute</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-desc">
+                  <strong>Save Milestone: `proj checkpoint "oauth login working"`</strong>
+                  <small>Commits clean state to local Git history.</small>
+                </div>
+                <button class="btn btn-primary" onclick="runStep(1, 3)">Execute</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">4</div>
+                <div class="step-desc">
+                  <strong>Agent breaks codebase (Syntax errors, deleted routes)</strong>
+                  <small>Simulates AI agent breaking code across multiple files.</small>
+                </div>
+                <button class="btn btn-danger" onclick="runStep(1, 4)">Break Code</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">5</div>
+                <div class="step-desc">
+                  <strong>Execute `proj undo` (Rollback to clean checkpoint)</strong>
+                  <small>Auto-creates safety stash and restores working tree to milestone.</small>
+                </div>
+                <button class="btn btn-warning" onclick="runStep(1, 5)">Rollback</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Walkthrough 2 -->
+        <div id="tab-throwaway" class="tab-content">
+          <div class="walkthrough-box">
+            <p><strong>Scenario:</strong> You need a 3-day scratchpad to test a model inference script. After 4 days, launching <code>proj</code> warns you of the expired folder. You decide the test succeeded and graduate it into a permanent project.</p>
+            <div class="steps-list">
+              <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-desc">
+                  <strong>`proj throwaway quick-llm-test` (TTL: 3 Days)</strong>
+                  <small>Created inside `projects/throwaways/` with expiration recorded.</small>
+                </div>
+                <button class="btn btn-primary" onclick="runStep(2, 1)">Create Throwaway</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-desc">
+                  <strong>Time Travel +4 Days</strong>
+                  <small>Simulates 4 days passing. Project is now expired.</small>
+                </div>
+                <button class="btn btn-purple" onclick="runStep(2, 2)">Advance Clock</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-desc">
+                  <strong>Launch `proj` (Interactive Dashboard Check)</strong>
+                  <small>Triggers expiration scanner and presents decision dialog.</small>
+                </div>
+                <button class="btn btn-action" onclick="runStep(2, 3)">Run `proj`</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">4</div>
+                <div class="step-desc">
+                  <strong>Execute `proj graduate quick-llm-test`</strong>
+                  <small>Moves folder to `C:\Users\Manit\projects\quick-llm-test` and initializes Git.</small>
+                </div>
+                <button class="btn btn-primary" onclick="runStep(2, 4)">Graduate</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Walkthrough 3 -->
+        <div id="tab-adopt" class="tab-content">
+          <div class="walkthrough-box">
+            <p><strong>Scenario:</strong> You have a messy unversioned folder `Desktop\messy-prototype` with hardcoded secrets and no Git. You run <code>proj adopt</code> to safely migrate it into the canonical projects directory with full shields.</p>
+            <div class="steps-list">
+              <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-desc">
+                  <strong>Simulate Loose Folder `Desktop\messy-prototype`</strong>
+                  <small>Contains raw code and unshielded .env file.</small>
+                </div>
+                <button class="btn btn-action" onclick="runStep(3, 1)">Spawn Desktop Folder</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-desc">
+                  <strong>Execute `proj adopt "Desktop\messy-prototype"`</strong>
+                  <small>Moves to canonical root, adds universal .gitignore + AGENTS.md, inits Git, saves initial checkpoint.</small>
+                </div>
+                <button class="btn btn-primary" onclick="runStep(3, 2)">Adopt Folder</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Walkthrough 4 -->
+        <div id="tab-doctor" class="tab-content">
+          <div class="walkthrough-box">
+            <p><strong>Scenario:</strong> Windows update or accidental deletion breaks the `Desktop\Projects` directory junction. Running <code>proj doctor</code> diagnoses the issue and repairs the NTFS junction automatically.</p>
+            <div class="steps-list">
+              <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-desc">
+                  <strong>Simulate Broken Desktop Junction</strong>
+                  <small>Corrupts or removes NTFS junction pointer.</small>
+                </div>
+                <button class="btn btn-danger" onclick="runStep(4, 1)">Break Junction</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-desc">
+                  <strong>Execute `proj doctor` (Diagnose & Auto-Repair)</strong>
+                  <small>Scans Git, roots, templates, and recreates NTFS Junction `Desktop\Projects` -> `projects\`.</small>
+                </div>
+                <button class="btn btn-warning" onclick="runStep(4, 2)">Run Doctor</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Walkthrough 5 -->
+        <div id="tab-jump" class="tab-content">
+          <div class="walkthrough-box">
+            <p><strong>Scenario:</strong> A child CLI process cannot mutate its parent shell's directory. <code>proj</code> emits an IPC token or file that the lightweight PowerShell wrapper function intercepts to perform <code>Set-Location</code> instantly.</p>
+            <div class="steps-list">
+              <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-desc">
+                  <strong>Current Shell Location: `Desktop\clearing out the trash`</strong>
+                  <small>User opens terminal and executes `proj`.</small>
+                </div>
+                <button class="btn btn-action" onclick="runStep(5, 1)">Inspect Shell</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-desc">
+                  <strong>Select project `ai-auth-api` from TUI menu</strong>
+                  <small>CLI writes navigation token `CD:C:\Users\Manit\projects\ai-auth-api`.</small>
+                </div>
+                <button class="btn btn-primary" onclick="runStep(5, 2)">Select in TUI</button>
+              </div>
+
+              <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-desc">
+                  <strong>PowerShell Wrapper Intercepts & Sets Location</strong>
+                  <small>Parent PowerShell executes `Set-Location C:\Users\Manit\projects\ai-auth-api`.</small>
+                </div>
+                <button class="btn btn-purple" onclick="runStep(5, 3)">Trigger Shell CD</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Free-Play Buttons -->
+      <div class="card">
+        <div class="card-title">
+          <span>🎮 Free-Play Command Controls</span>
+          <span class="tag">DIRECT INVOCATIONS</span>
+        </div>
+
+        <div class="section-label">Scaffolding & Creation</div>
+        <div class="btn-group">
+          <button class="btn btn-action" onclick="engine.scaffoldProject('web-dashboard', 'web')">+ proj new web-dashboard (Web)</button>
+          <button class="btn btn-action" onclick="engine.scaffoldProject('ml-pipeline', 'python')">+ proj new ml-pipeline (Python)</button>
+          <button class="btn btn-action" onclick="engine.scaffoldProject('cli-tool', 'typescript')">+ proj new cli-tool (TS)</button>
+          <button class="btn btn-action" onclick="engine.createThrowaway('temp-spike-' + Math.floor(Math.random()*1000), 3)">+ proj throwaway (3 Days)</button>
+        </div>
+
+        <div class="section-label">AI Agent Simulation & Git Safety Net</div>
+        <div class="btn-group">
+          <button class="btn btn-action" onclick="engine.simulateAgentWork(engine.activeProjectName, 'Agent generated API endpoints', false)">🤖 Agent: Good Edits</button>
+          <button class="btn btn-danger" onclick="engine.simulateAgentWork(engine.activeProjectName, 'Agent broke dependencies & deleted utils', true)">💥 Agent: Breaking Bug</button>
+          <button class="btn btn-primary" onclick="engine.createCheckpoint(engine.activeProjectName, 'Manual Save milestone')">🛡️ proj checkpoint</button>
+          <button class="btn btn-warning" onclick="engine.undoRollback(engine.activeProjectName)">↩️ proj undo (Rollback)</button>
+        </div>
+
+        <div class="section-label">System & Utilities</div>
+        <div class="btn-group">
+          <button class="btn btn-purple" onclick="engine.advanceClock(3)">⏰ Time Travel +3 Days</button>
+          <button class="btn btn-action" onclick="engine.runDoctor()">🩺 proj doctor</button>
+          <button class="btn btn-danger" onclick="engine.breakJunction()">⚡ Corrupt Junction</button>
+          <button class="btn btn-action" onclick="engine.resetAll()">🔄 Reset State Model</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: TERMINAL & STATE PANELS -->
+    <div>
+      <!-- Terminal Output -->
+      <div class="card">
+        <div class="card-title">
+          <span>📟 Terminal TUI Output (Clack Simulator)</span>
+          <span class="tag">CLI EMULATOR</span>
+        </div>
+        <div class="terminal" id="termOutput">
+┌  proj (v1.0.0) — Canonical Projects Manager
+│  Root: C:\Users\Manit\projects
+│
+◇  Scanning repositories... (0 found)
+│
+└  Ready. Use interactive controls on the left.
+        </div>
+      </div>
+
+      <!-- Shell Bridge & IPC Status -->
+      <div class="card">
+        <div class="card-title">
+          <span>⚡ PowerShell Shell Bridge & Navigation IPC</span>
+          <span class="tag">PARENT SHELL STATE</span>
+        </div>
+        <div class="state-panel">
+          <div class="state-row">
+            <span class="state-key">Current Shell Working Directory:</span>
+            <span class="state-val highlight" id="shellPath">C:\Users\Manit\Desktop\clearing out the trash</span>
+          </div>
+          <div class="state-row">
+            <span class="state-key">Desktop Junction Status:</span>
+            <span class="state-val success" id="junctionState">Desktop\Projects -> C:\Users\Manit\projects (OK)</span>
+          </div>
+          <div class="state-row">
+            <span class="state-key">Simulated Time:</span>
+            <span class="state-val" id="simTime">Day 0 (2026-08-19)</span>
+          </div>
+        </div>
+        <div class="ipc-box" id="ipcBox">
+          <div class="ipc-title">Last IPC Token Emitted to Shell:</div>
+          <div id="ipcContent">NONE (Shell idle)</div>
+        </div>
+      </div>
+
+      <!-- Active Projects & Git History -->
+      <div class="card">
+        <div class="card-title">
+          <span>📁 Managed Projects & Git State</span>
+          <span class="tag" id="projCount">0 Projects</span>
+        </div>
+        <div id="projectsList">
+          <div style="color: var(--text-dim); font-size: 13px; font-style: italic;">No projects created yet. Run a walkthrough or click `proj new`.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PURE LOGIC MODULE -->
+<script>
+/**
+ * PURE DOMAIN LOGIC MODULE
+ * Can be lifted directly out and used in the TypeScript CLI codebase.
+ * No DOM references inside this class.
+ */
+class ProjDomainEngine {
+  constructor() {
+    this.canonicalRoot = 'C:\\Users\\Manit\\projects';
+    this.throwawaysRoot = 'C:\\Users\\Manit\\projects\\throwaways';
+    this.desktopJunction = {
+      source: 'C:\\Users\\Manit\\Desktop\\Projects',
+      target: 'C:\\Users\\Manit\\projects',
+      valid: true
+    };
+    this.shellCwd = 'C:\\Users\\Manit\\Desktop\\clearing out the trash';
+    this.dayOffset = 0;
+    this.projects = new Map();
+    this.throwaways = new Map();
+    this.desktopLooseFolders = new Map();
+    this.activeProjectName = null;
+    this.lastIpcToken = null;
+    this.lastChange = {
+      title: 'INITIAL STATE LOADED',
+      desc: 'Engine initialized with canonical workspace root.'
+    };
+    this.termLogs = [];
+  }
+
+  logTerm(text) {
+    this.termLogs.push(text);
+  }
+
+  scaffoldProject(name, template = 'minimal') {
+    const projPath = `${this.canonicalRoot}\\${name}`;
+    if (this.projects.has(name)) {
+      this.lastChange = {
+        title: 'SCAFFOLDING ERROR',
+        desc: `Project "${name}" already exists in canonical projects directory!`
+      };
+      this.logTerm(`✖ Project "${name}" already exists in ${this.canonicalRoot}`);
+      return false;
+    }
+
+    const initialCommit = {
+      hash: 'c10a8f9',
+      message: 'checkpoint: Initial commit with agent guardrails & gitignore',
+      timestamp: `Day ${this.dayOffset} 10:00 AM`,
+      files: ['.gitignore', 'AGENTS.md', 'README.md', template === 'typescript' ? 'package.json' : 'main.py']
+    };
+
+    const project = {
+      name,
+      path: projPath,
+      type: 'permanent',
+      template,
+      branch: 'main',
+      gitInitialized: true,
+      hasAgentsMd: true,
+      hasGitignore: true,
+      workingTree: { modified: [], untracked: [] },
+      commits: [initialCommit],
+      stashes: [],
+      lastModified: `Day ${this.dayOffset}`
+    };
+
+    this.projects.set(name, project);
+    this.activeProjectName = name;
+
+    // Emit IPC token for shell jump
+    this.lastIpcToken = {
+      type: 'CD',
+      target: projPath,
+      timestamp: Date.now()
+    };
+
+    this.lastChange = {
+      title: `PROJECT CREATED: ${name}`,
+      desc: `Scaffolded "${name}" with template "${template}". Initialized Git repository, added universal .gitignore & AGENTS.md, made initial checkpoint commit, and emitted shell jump token.`
+    };
+
+    this.logTerm(`\n┌  proj new ${name}`);
+    this.logTerm(`│  ✔ Template selected: ${template}`);
+    this.logTerm(`│  ✔ Injected C:\\Users\\Manit\\.proj\\templates\\AGENTS.md`);
+    this.logTerm(`│  ✔ Injected universal secret-shield .gitignore`);
+    this.logTerm(`│  ✔ Initialized local Git repository (branch: main)`);
+    this.logTerm(`│  ✔ Created snapshot: ${initialCommit.hash} "${initialCommit.message}"`);
+    this.logTerm(`└  Navigating shell into ${projPath}\n`);
+
+    return true;
+  }
+
+  createThrowaway(name, ttlDays = 3) {
+    const projPath = `${this.throwawaysRoot}\\${name}`;
+    const expiresAtDay = this.dayOffset + ttlDays;
+
+    const initialCommit = {
+      hash: 't98f3b2',
+      message: 'checkpoint: Throwaway scratchpad initialized',
+      timestamp: `Day ${this.dayOffset} 11:00 AM`,
+      files: ['.gitignore', 'AGENTS.md', 'scratch.py']
+    };
+
+    const project = {
+      name,
+      path: projPath,
+      type: 'throwaway',
+      template: 'minimal',
+      branch: 'main',
+      gitInitialized: true,
+      hasAgentsMd: true,
+      hasGitignore: true,
+      workingTree: { modified: [], untracked: [] },
+      commits: [initialCommit],
+      stashes: [],
+      createdAtDay: this.dayOffset,
+      expiresAtDay,
+      lastModified: `Day ${this.dayOffset}`
+    };
+
+    this.projects.set(name, project);
+    this.throwaways.set(name, { name, path: projPath, expiresAtDay });
+    this.activeProjectName = name;
+
+    this.lastIpcToken = {
+      type: 'CD',
+      target: projPath,
+      timestamp: Date.now()
+    };
+
+    this.lastChange = {
+      title: `THROWAWAY CREATED: ${name}`,
+      desc: `Created throwaway scratchpad "${name}" under projects/throwaways/. Configured with ${ttlDays}-day TTL (expires on Day ${expiresAtDay}).`
+    };
+
+    this.logTerm(`\n┌  proj throwaway ${name}`);
+    this.logTerm(`│  ✔ Location: ${projPath}`);
+    this.logTerm(`│  ✔ Expiration set to: ${ttlDays} days (Day ${expiresAtDay})`);
+    this.logTerm(`│  ✔ Initialized with throwaway safety shield`);
+    this.logTerm(`└  Switched to scratchpad directory\n`);
+
+    return true;
+  }
+
+  simulateAgentWork(name, desc = 'Agent modifications', isBug = false) {
+    const project = this.projects.get(name);
+    if (!project) {
+      this.lastChange = { title: 'ERROR', desc: 'No active project selected to simulate agent work.' };
+      return;
+    }
+
+    if (isBug) {
+      project.workingTree.modified = ['src/auth.ts [SYNTAX ERROR: Unexpected token]', 'src/index.ts [DELETED ROUTE]'];
+      project.workingTree.untracked = ['crash_dump.log'];
+      this.lastChange = {
+        title: `AGENT BROKE CODEBASE: ${name}`,
+        desc: `AI agent introduced breaking changes and syntax errors in "${name}". Working tree is now DIRTY.`
+      };
+      this.logTerm(`\n🤖 [AI Agent] Execution error in ${name}:`);
+      this.logTerm(`✖ SyntaxError in src/auth.ts: Cannot read properties of undefined`);
+      this.logTerm(`⚠ Uncommitted modified files: 2, untracked: 1\n`);
+    } else {
+      project.workingTree.modified = ['src/auth.ts', 'src/routes/login.ts'];
+      project.workingTree.untracked = ['tests/auth.test.ts'];
+      this.lastChange = {
+        title: `AGENT COMPLETED WORK: ${name}`,
+        desc: `AI agent authored clean OAuth authentication logic in "${name}". Ready for checkpoint commit.`
+      };
+      this.logTerm(`\n🤖 [AI Agent] Finished task in ${name}:`);
+      this.logTerm(`✔ Generated src/auth.ts, src/routes/login.ts, tests/auth.test.ts`);
+      this.logTerm(`ℹ Working tree modified. Recommended: run 'proj checkpoint "<msg>"\n`);
+    }
+  }
+
+  createCheckpoint(name, message = 'Checkpoint update') {
+    const project = this.projects.get(name);
+    if (!project) {
+      this.lastChange = { title: 'ERROR', desc: 'No active project selected.' };
+      return;
+    }
+
+    if (project.workingTree.modified.length === 0 && project.workingTree.untracked.length === 0) {
+      this.lastChange = {
+        title: 'CHECKPOINT SKIPPED',
+        desc: 'Working tree is already clean. Nothing to commit.'
+      };
+      this.logTerm(`\nℹ Nothing to commit, working tree clean in ${name}`);
+      return;
+    }
+
+    const shortHash = Math.random().toString(16).substring(2, 9);
+    const newCommit = {
+      hash: shortHash,
+      message: `checkpoint: ${message}`,
+      timestamp: `Day ${this.dayOffset} 12:30 PM`,
+      files: [...project.workingTree.modified, ...project.workingTree.untracked]
+    };
+
+    project.commits.unshift(newCommit);
+    project.workingTree = { modified: [], untracked: [] };
+
+    this.lastChange = {
+      title: `CHECKPOINT SAVED: ${shortHash}`,
+      desc: `Created milestone snapshot "${newCommit.message}". Working tree is now 100% clean.`
+    };
+
+    this.logTerm(`\n┌  proj checkpoint "${message}"`);
+    this.logTerm(`│  ✔ Staged all tracked & non-ignored files`);
+    this.logTerm(`│  ✔ Committed snapshot: ${shortHash} (branch: ${project.branch})`);
+    this.logTerm(`└  Working tree safe & clean.\n`);
+  }
+
+  undoRollback(name) {
+    const project = this.projects.get(name);
+    if (!project) {
+      this.lastChange = { title: 'ERROR', desc: 'No active project selected.' };
+      return;
+    }
+
+    if (project.commits.length <= 1 && project.workingTree.modified.length === 0) {
+      this.lastChange = { title: 'UNDO SKIPPED', desc: 'No previous checkpoints or dirty changes to revert.' };
+      return;
+    }
+
+    // Check if dirty changes exist -> create safety stash first!
+    if (project.workingTree.modified.length > 0 || project.workingTree.untracked.length > 0) {
+      const stashId = `stash@{${project.stashes.length}}`;
+      const stashName = `proj-safety-stash-day${this.dayOffset}-${Date.now().toString().slice(-4)}`;
+      project.stashes.unshift({
+        id: stashId,
+        name: stashName,
+        files: [...project.workingTree.modified, ...project.workingTree.untracked],
+        timestamp: `Day ${this.dayOffset}`
+      });
+      project.workingTree = { modified: [], untracked: [] };
+    }
+
+    // Target the latest clean checkpoint commit
+    const restoredCommit = project.commits[0];
+
+    this.lastChange = {
+      title: `ROLLBACK SUCCESSFUL: ${name}`,
+      desc: `Reverted broken files to clean checkpoint "${restoredCommit.message}" (${restoredCommit.hash}). A safety stash was automatically saved to prevent data loss.`
+    };
+
+    this.logTerm(`\n┌  proj undo (Safety Rollback Engine)`);
+    this.logTerm(`│  🛡 Created safety backup stash: ${project.stashes[0]?.name || 'clean'}`);
+    this.logTerm(`│  ✔ Reverted all working tree files`);
+    this.logTerm(`│  ✔ Codebase restored to milestone: [${restoredCommit.hash}] "${restoredCommit.message}"`);
+    this.logTerm(`└  Working state safely restored.\n`);
+  }
+
+  graduateThrowaway(name) {
+    const project = this.projects.get(name);
+    if (!project || project.type !== 'throwaway') {
+      this.lastChange = { title: 'ERROR', desc: `"${name}" is not an active throwaway.` };
+      return;
+    }
+
+    const newPath = `${this.canonicalRoot}\\${name}`;
+    project.type = 'permanent';
+    project.path = newPath;
+    delete project.expiresAtDay;
+    this.throwaways.delete(name);
+
+    this.lastIpcToken = { type: 'CD', target: newPath, timestamp: Date.now() };
+
+    this.lastChange = {
+      title: `THROWAWAY GRADUATED: ${name}`,
+      desc: `Promoted "${name}" to permanent repository under ${newPath}. Expiration registry cleared.`
+    };
+
+    this.logTerm(`\n┌  proj graduate ${name}`);
+    this.logTerm(`│  ✔ Moved folder: throwaways\\${name} -> projects\\${name}`);
+    this.logTerm(`│  ✔ Removed from expiration tracking database`);
+    this.logTerm(`│  ✔ Preserved all local Git commit history`);
+    this.logTerm(`└  Project is now permanent.\n`);
+  }
+
+  adoptFolder(folderName) {
+    const targetPath = `${this.canonicalRoot}\\${folderName}`;
+    const initialCommit = {
+      hash: 'a71e42c',
+      message: 'checkpoint: Adopted desktop folder into canonical projects with safety shield',
+      timestamp: `Day ${this.dayOffset} 03:00 PM`,
+      files: ['.gitignore', 'AGENTS.md', 'legacy_app.py']
+    };
+
+    const project = {
+      name: folderName,
+      path: targetPath,
+      type: 'permanent',
+      template: 'adopted',
+      branch: 'main',
+      gitInitialized: true,
+      hasAgentsMd: true,
+      hasGitignore: true,
+      workingTree: { modified: [], untracked: [] },
+      commits: [initialCommit],
+      stashes: [],
+      lastModified: `Day ${this.dayOffset}`
+    };
+
+    this.projects.set(folderName, project);
+    this.activeProjectName = folderName;
+    this.desktopLooseFolders.delete(folderName);
+
+    this.lastIpcToken = { type: 'CD', target: targetPath, timestamp: Date.now() };
+
+    this.lastChange = {
+      title: `FOLDER ADOPTED: ${folderName}`,
+      desc: `Moved "Desktop\\${folderName}" to "${targetPath}". Injected secret-shield .gitignore and AGENTS.md, initialized Git, and made adoption checkpoint commit.`
+    };
+
+    this.logTerm(`\n┌  proj adopt "Desktop\\${folderName}"`);
+    this.logTerm(`│  ✔ Migrated folder to ${targetPath}`);
+    this.logTerm(`│  ✔ Added universal .gitignore (ignoring .env and secrets)`);
+    this.logTerm(`│  ✔ Injected master AGENTS.md guardrails`);
+    this.logTerm(`│  ✔ Initialized local Git & created snapshot ${initialCommit.hash}`);
+    this.logTerm(`└  Desktop folder cleaned & adopted into projects.\n`);
+  }
+
+  breakJunction() {
+    this.desktopJunction.valid = false;
+    this.lastChange = {
+      title: 'JUNCTION CORRUPTED',
+      desc: 'Simulated broken NTFS directory junction Desktop\\Projects. Windows Explorer shortcut is non-functional.'
+    };
+    this.logTerm(`\n⚡ [Filesystem Event] Junction Desktop\\Projects link broken!`);
+  }
+
+  runDoctor() {
+    let repaired = false;
+    if (!this.desktopJunction.valid) {
+      this.desktopJunction.valid = true;
+      repaired = true;
+    }
+
+    this.lastChange = {
+      title: 'PROJ DOCTOR EXECUTED',
+      desc: repaired 
+        ? 'Doctor detected broken junction Desktop\\Projects and repaired it automatically (New-Item -ItemType Junction).'
+        : 'Doctor verified all systems: Git OK, Canonical Root OK, Throwaways Root OK, Desktop Junction OK.'
+    };
+
+    this.logTerm(`\n┌  proj doctor (System Diagnostics)`);
+    this.logTerm(`│  ✔ Git binary: C:\\Program Files\\Git\\bin\\git.exe (v2.52.0)`);
+    this.logTerm(`│  ✔ Canonical root: ${this.canonicalRoot} (Accessible)`);
+    this.logTerm(`│  ✔ Throwaway root: ${this.throwawaysRoot} (Accessible)`);
+    this.logTerm(`│  ✔ User templates: C:\\Users\\Manit\\.proj\\templates\\ (Verified)`);
+    if (repaired) {
+      this.logTerm(`│  ⚠ Desktop Junction was invalid or missing.`);
+      this.logTerm(`│  ✔ REPAIRED: Created NTFS Directory Junction Desktop\\Projects -> ${this.canonicalRoot}`);
+    } else {
+      this.logTerm(`│  ✔ Desktop Junction: Desktop\\Projects -> ${this.canonicalRoot} (Healthy)`);
+    }
+    this.logTerm(`└  All systems nominal.\n`);
+  }
+
+  advanceClock(days = 1) {
+    this.dayOffset += days;
+    const expiredList = [];
+    for (const [name, info] of this.throwaways.entries()) {
+      if (this.dayOffset >= info.expiresAtDay) {
+        expiredList.push(name);
+      }
+    }
+
+    this.lastChange = {
+      title: `TIME ADVANCED: +${days} DAYS`,
+      desc: `Simulated clock is now Day ${this.dayOffset}. ${expiredList.length > 0 ? `Expired throwaways detected: ${expiredList.join(', ')}` : 'No expired throwaways.'}`
+    };
+
+    this.logTerm(`\n⏰ [Clock] Advanced time to Day ${this.dayOffset}.`);
+    if (expiredList.length > 0) {
+      this.logTerm(`⚠ Warning: ${expiredList.length} throwaway project(s) have expired! Run 'proj' to resolve.`);
+    }
+  }
+
+  checkExpiredOnStartup() {
+    const expired = [];
+    for (const [name, info] of this.throwaways.entries()) {
+      if (this.dayOffset >= info.expiresAtDay) {
+        expired.push(name);
+      }
+    }
+
+    this.logTerm(`\n┌  proj (Interactive Menu)`);
+    if (expired.length > 0) {
+      this.logTerm(`│  ⚠ EXPIRED THROWAWAYS DETECTED:`);
+      for (const name of expired) {
+        this.logTerm(`│    - ${name} (Expired on Day ${this.throwaways.get(name).expiresAtDay})`);
+        this.logTerm(`│      Choices: [G] Graduate | [D] Delete | [E] Extend 3 days`);
+      }
+    }
+    this.logTerm(`│  What would you like to do?`);
+    this.logTerm(`│    [1] 📁 View & Jump to Projects (${this.projects.size} available)`);
+    this.logTerm(`│    [2] ➕ Create New Project (proj new)`);
+    this.logTerm(`│    [3] ⏱ Create Throwaway Scratchpad (proj throwaway)`);
+    this.logTerm(`│    [4] 🛡 Save Checkpoint Milestone (proj checkpoint)`);
+    this.logTerm(`│    [5] ↩ Rollback / Undo Changes (proj undo)`);
+    this.logTerm(`│    [6] 🩺 Run Diagnostics & Repair (proj doctor)`);
+    this.lastChange = {
+      title: 'CLEAN TOP-LEVEL MENU',
+      desc: 'Top-level wizard menu displays clean action choices only. Project list is nested inside Option [1].'
+    };
+    this.logTerm(`└  Ready.\n`);
+  }
+
+  executeShellCd() {
+    if (this.lastIpcToken && this.lastIpcToken.type === 'CD') {
+      this.shellCwd = this.lastIpcToken.target;
+      this.lastChange = {
+        title: 'POWERSHELL SET-LOCATION EXECUTED',
+        desc: `PowerShell intercepted token and executed "Set-Location ${this.shellCwd}". Terminal directory changed seamlessly.`
+      };
+      this.logTerm(`\nPS ${this.shellCwd}>`);
+      this.lastIpcToken = null;
+    }
+  }
+
+  resetAll() {
+    this.projects.clear();
+    this.throwaways.clear();
+    this.activeProjectName = null;
+    this.dayOffset = 0;
+    this.shellCwd = 'C:\\Users\\Manit\\Desktop\\clearing out the trash';
+    this.desktopJunction.valid = true;
+    this.lastIpcToken = null;
+    this.lastChange = {
+      title: 'STATE RESET',
+      desc: 'All state reset to initial blank workspace.'
+    };
+    this.termLogs = ['┌  proj (v1.0.0) — Canonical Projects Manager\n│  State reset.\n└  Ready.'];
+  }
+}
+
+// Instantiate singleton engine
+const engine = new ProjDomainEngine();
+
+// UI BRIDGE FUNCTIONS
+function render() {
+  // Update change banner
+  document.getElementById('changeTitle').innerText = engine.lastChange.title;
+  document.getElementById('changeDesc').innerText = engine.lastChange.desc;
+
+  // Update shell info
+  document.getElementById('shellPath').innerText = engine.shellCwd;
+  document.getElementById('simTime').innerText = `Day ${engine.dayOffset} (2026-08-${19 + engine.dayOffset})`;
+
+  const jElem = document.getElementById('junctionState');
+  if (engine.desktopJunction.valid) {
+    jElem.className = 'state-val success';
+    jElem.innerText = 'Desktop\\Projects -> C:\\Users\\Manit\\projects (Healthy)';
+  } else {
+    jElem.className = 'state-val danger';
+    jElem.innerText = 'Desktop\\Projects (CORRUPTED / MISSING)';
+  }
+
+  // Update IPC box
+  const ipcBox = document.getElementById('ipcContent');
+  if (engine.lastIpcToken) {
+    ipcBox.innerHTML = `<strong>${engine.lastIpcToken.type}:</strong> ${engine.lastIpcToken.target} <span style="color:var(--text-dim)">(Pending shell catch)</span>`;
+  } else {
+    ipcBox.innerHTML = `<em>None (Shell is synced at ${engine.shellCwd})</em>`;
+  }
+
+  // Update terminal
+  const term = document.getElementById('termOutput');
+  term.innerText = engine.termLogs.slice(-14).join('\n');
+  term.scrollTop = term.scrollHeight;
+
+  // Render Projects List
+  const projContainer = document.getElementById('projectsList');
+  document.getElementById('projCount').innerText = `${engine.projects.size} Projects`;
+
+  if (engine.projects.size === 0) {
+    projContainer.innerHTML = `<div style="color: var(--text-dim); font-size: 13px; font-style: italic;">No projects created yet. Run a walkthrough or click \`proj new\`.</div>`;
+    return;
+  }
+
+  let html = '';
+  for (const [name, p] of engine.projects.entries()) {
+    const isActive = name === engine.activeProjectName;
+    const isDirty = p.workingTree.modified.length > 0 || p.workingTree.untracked.length > 0;
+    const isThrowaway = p.type === 'throwaway';
+    const isExpired = isThrowaway && engine.dayOffset >= p.expiresAtDay;
+
+    html += `
+      <div class="project-card ${isActive ? 'active-project' : ''}">
+        <div class="project-header">
+          <div>
+            <span class="project-name">${p.name}</span>
+            <span class="tag" style="margin-left: 6px;">[${p.template}]</span>
+            ${isThrowaway ? `<span class="badge ${isExpired ? 'badge-throwaway' : 'badge-primary'}" style="margin-left: 6px; font-size: 10px;">${isExpired ? 'EXPIRED' : `TTL: Day ${p.expiresAtDay}`}</span>` : ''}
+          </div>
+          <div>
+            <span class="badge ${isDirty ? 'badge-throwaway' : 'badge-offline'}">${isDirty ? 'DIRTY / UNCOMMITTED' : 'CLEAN'}</span>
+          </div>
+        </div>
+
+        <div style="font-size: 11.5px; color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 6px;">
+          Path: ${p.path} | Branch: <strong style="color: var(--text-bright);">${p.branch}</strong>
+        </div>
+
+        ${isDirty ? `
+          <div style="background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 4px; padding: 6px 8px; font-size: 11px; font-family: var(--font-mono); margin-bottom: 6px;">
+            <strong style="color: var(--danger);">Uncommitted Changes:</strong>
+            ${p.workingTree.modified.map(m => `<div style="color: var(--danger);">- modified: ${m}</div>`).join('')}
+            ${p.workingTree.untracked.map(u => `<div style="color: var(--warning);">- untracked: ${u}</div>`).join('')}
+          </div>
+        ` : ''}
+
+        ${p.stashes.length > 0 ? `
+          <div style="background: rgba(210, 153, 34, 0.1); border: 1px solid rgba(210, 153, 34, 0.3); border-radius: 4px; padding: 6px 8px; font-size: 11px; font-family: var(--font-mono); margin-bottom: 6px;">
+            <strong style="color: var(--warning);">Safety Stashes (${p.stashes.length}):</strong>
+            ${p.stashes.map(s => `<div>🛡️ ${s.id}: ${s.name}</div>`).join('')}
+          </div>
+        ` : ''}
+
+        <div class="commit-history">
+          <div style="color: var(--text-bright); font-weight: 600; margin-bottom: 4px;">Recent Local Checkpoints:</div>
+          ${p.commits.slice(0, 3).map(c => `
+            <div class="commit-node">
+              <strong>${c.hash}</strong> — ${c.message} <span style="color: var(--text-dim);">(${c.timestamp})</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  projContainer.innerHTML = html;
+}
+
+// Wrap engine methods with render trigger
+const originalMethods = ['scaffoldProject', 'createThrowaway', 'simulateAgentWork', 'createCheckpoint', 'undoRollback', 'graduateThrowaway', 'adoptFolder', 'breakJunction', 'runDoctor', 'advanceClock', 'checkExpiredOnStartup', 'executeShellCd', 'resetAll'];
+for (const m of originalMethods) {
+  const orig = engine[m].bind(engine);
+  engine[m] = function(...args) {
+    const res = orig(...args);
+    render();
+    return res;
+  };
+}
+
+// Walkthrough step controller
+function runStep(scenario, step) {
+  if (scenario === 1) {
+    if (step === 1) engine.scaffoldProject('ai-auth-api', 'typescript');
+    if (step === 2) engine.simulateAgentWork('ai-auth-api', 'OAuth authentication logic', false);
+    if (step === 3) engine.createCheckpoint('ai-auth-api', 'oauth login working');
+    if (step === 4) engine.simulateAgentWork('ai-auth-api', 'Broke route handlers', true);
+    if (step === 5) engine.undoRollback('ai-auth-api');
+  } else if (scenario === 2) {
+    if (step === 1) engine.createThrowaway('quick-llm-test', 3);
+    if (step === 2) engine.advanceClock(4);
+    if (step === 3) engine.checkExpiredOnStartup();
+    if (step === 4) engine.graduateThrowaway('quick-llm-test');
+  } else if (scenario === 3) {
+    if (step === 1) {
+      engine.desktopLooseFolders.set('messy-prototype', { name: 'messy-prototype', path: 'Desktop\\messy-prototype' });
+      engine.lastChange = {
+        title: 'DESKTOP FOLDER SPAWNED',
+        desc: 'Simulated unversioned loose folder "Desktop\\messy-prototype" with untracked code and .env secrets.'
+      };
+      engine.logTerm(`\n📂 Created loose folder on Desktop: Desktop\\messy-prototype`);
+      render();
+    }
+    if (step === 2) engine.adoptFolder('messy-prototype');
+  } else if (scenario === 4) {
+    if (step === 1) engine.breakJunction();
+    if (step === 2) engine.runDoctor();
+  } else if (scenario === 5) {
+    if (step === 1) {
+      engine.lastChange = { title: 'INSPECT SHELL', desc: `Current terminal shell is at ${engine.shellCwd}` };
+      render();
+    }
+    if (step === 2) {
+      if (!engine.projects.has('ai-auth-api')) engine.scaffoldProject('ai-auth-api', 'typescript');
+      engine.lastIpcToken = { type: 'CD', target: 'C:\\Users\\Manit\\projects\\ai-auth-api', timestamp: Date.now() };
+      engine.lastChange = {
+        title: 'TUI PROJECT SELECTED',
+        desc: 'Developer selected "ai-auth-api" in TUI. CLI wrote IPC navigation token CD:C:\\Users\\Manit\\projects\\ai-auth-api.'
+      };
+      engine.logTerm(`\n[TUI] Selected ai-auth-api. Emitted IPC token.`);
+      render();
+    }
+    if (step === 3) engine.executeShellCd();
+  }
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  
+  event.target.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// Initial render
+render();
+</script>
+
+</body>
+</html>
