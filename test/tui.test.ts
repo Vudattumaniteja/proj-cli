@@ -17,6 +17,8 @@ import { updateConfig, ensureConfigDirs } from '../src/config/index.js';
 import { readIpcToken } from '../src/ipc/index.js';
 import { createCheckpoint } from '../src/engine/gitSafety.js';
 import { scaffoldProject } from '../src/engine/scaffold.js';
+import { createThrowaway } from '../src/engine/throwaway.js';
+import { getConfig } from '../src/config/index.js';
 
 vi.mock('@clack/prompts', () => {
   return {
@@ -82,6 +84,71 @@ describe('Clack TUI Dashboard & Interactive Wizards', () => {
 
     expect(p.intro).toHaveBeenCalled();
     expect(p.outro).toHaveBeenCalledWith('Goodbye!');
+  });
+
+  it('detects expired throwaway scratchpads on dashboard launch and prompts user to delete them', async () => {
+    // Create a throwaway scratchpad that expired yesterday
+    const pastDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await createThrowaway('expired-temp-app', 1, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+      now: pastDate,
+    });
+
+    const scratchPath = path.join(throwawaysDir, 'expired-temp-app');
+    expect(fs.existsSync(scratchPath)).toBe(true);
+
+    // 1. Expired prompt action: select 'delete'
+    vi.mocked(p.select).mockResolvedValueOnce('delete');
+    // 2. Main menu: select 'exit'
+    vi.mocked(p.select).mockResolvedValueOnce('exit');
+
+    await launchInteractiveDashboard({ configDir: tempDir });
+
+    // Verify the expired throwaway was deleted from disk and purged from config
+    expect(fs.existsSync(scratchPath)).toBe(false);
+    const cfg = getConfig({ configDir: tempDir });
+    expect(cfg.throwaways?.['expired-temp-app']).toBeUndefined();
+  });
+
+  it('detects expired throwaway scratchpads on dashboard launch and extends TTL when chosen', async () => {
+    const pastDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await createThrowaway('expired-to-extend', 1, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+      now: pastDate,
+    });
+
+    // 1. Expired prompt action: select 'extend'
+    vi.mocked(p.select).mockResolvedValueOnce('extend');
+    // 2. Main menu: select 'exit'
+    vi.mocked(p.select).mockResolvedValueOnce('exit');
+
+    await launchInteractiveDashboard({ configDir: tempDir });
+
+    const cfg = getConfig({ configDir: tempDir });
+    expect(cfg.throwaways?.['expired-to-extend']).toBeDefined();
+    expect(cfg.throwaways?.['expired-to-extend'].ttlDays).toBe(4);
+  });
+
+  it('detects expired throwaway scratchpads on dashboard launch and graduates when chosen', async () => {
+    const pastDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await createThrowaway('expired-to-graduate', 1, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+      now: pastDate,
+    });
+
+    // 1. Expired prompt action: select 'graduate'
+    vi.mocked(p.select).mockResolvedValueOnce('graduate');
+    // 2. Main menu: select 'exit'
+    vi.mocked(p.select).mockResolvedValueOnce('exit');
+
+    await launchInteractiveDashboard({ configDir: tempDir });
+
+    expect(fs.existsSync(path.join(projectsDir, 'expired-to-graduate'))).toBe(true);
+    const cfg = getConfig({ configDir: tempDir });
+    expect(cfg.throwaways?.['expired-to-graduate']).toBeUndefined();
   });
 
   it('runs interactiveNewProject wizard to create project and emit code IPC token', async () => {

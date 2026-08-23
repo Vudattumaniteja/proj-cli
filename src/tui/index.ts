@@ -8,11 +8,15 @@ import {
   getTemplatesDir,
   DEFAULT_AGENTS_TEMPLATE_NAME,
 } from '../config/index.js';
-import { emitIpcToken } from '../ipc/index.js';
+import { emitIpcToken, openInEditor } from '../ipc/index.js';
 import {
   listProjects,
   scaffoldProject,
   createThrowaway,
+  deleteThrowaway,
+  extendThrowaway,
+  graduateThrowaway,
+  checkExpiredThrowaways,
   createCheckpoint,
   listCheckpoints,
   rollbackCheckpoint,
@@ -106,8 +110,9 @@ export async function interactiveNewProject(
 
     if (!p.isCancel(nextAction)) {
       if (nextAction === 'code') {
+        openInEditor(result.path);
         emitIpcToken('code', result.path, { configDir: options?.configDir });
-        p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        p.outro(`Opening ${result.name} in VS Code.`);
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
@@ -202,8 +207,9 @@ export async function interactiveThrowaway(
 
     if (!p.isCancel(nextAction)) {
       if (nextAction === 'code') {
+        openInEditor(result.path);
         emitIpcToken('code', result.path, { configDir: options?.configDir });
-        p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        p.outro(`Opening ${result.name} in VS Code.`);
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
@@ -315,7 +321,11 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
         }`
       : pc.dim('non-git');
 
-    const throwawayBadge = proj.isThrowaway ? pc.magenta(' [throwaway]') : '';
+    const throwawayBadge = proj.isThrowaway
+      ? proj.isExpired
+        ? pc.red(' [throwaway: EXPIRED]')
+        : pc.magenta(' [throwaway]')
+      : '';
     const badge = pc.dim(proj.templateBadge);
 
     return {
@@ -344,35 +354,60 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   if (!targetProject) return 'back';
 
   // Context Actions Menu for selected project
+  const actionsList = [
+    {
+      value: 'jump',
+      label: '🚀 Jump (cd)',
+      hint: `Navigate shell to ${targetProject.path}`,
+    },
+    {
+      value: 'code',
+      label: '💻 Open in VS Code',
+      hint: 'Emit IPC token to open in VS Code',
+    },
+  ];
+
+  if (targetProject.isThrowaway) {
+    actionsList.push(
+      {
+        value: 'graduate',
+        label: '🎓 Graduate to Permanent Project',
+        hint: 'Move scratchpad to canonical projects root and initialize Git',
+      },
+      {
+        value: 'extend',
+        label: '⏳ Extend TTL (+3 days)',
+        hint: 'Extend expiration deadline by 3 days',
+      },
+      {
+        value: 'delete',
+        label: '🗑️ Delete Throwaway',
+        hint: 'Delete scratchpad directory and purge metadata',
+      }
+    );
+  }
+
+  actionsList.push(
+    {
+      value: 'checkpoint',
+      label: '💾 Save Checkpoint',
+      hint: 'Create milestone save commit in this repository',
+    },
+    {
+      value: 'rollback',
+      label: '⏪ Rollback / Undo',
+      hint: 'Restore previous milestone with safety stash',
+    },
+    {
+      value: 'back',
+      label: '↩ Back to Project List',
+      hint: '',
+    }
+  );
+
   const contextAction = await p.select({
     message: `Actions for "${targetProject.name}":`,
-    options: [
-      {
-        value: 'jump',
-        label: '🚀 Jump (cd)',
-        hint: `Navigate shell to ${targetProject.path}`,
-      },
-      {
-        value: 'code',
-        label: '💻 Open in VS Code',
-        hint: 'Emit IPC token to open in VS Code',
-      },
-      {
-        value: 'checkpoint',
-        label: '💾 Save Checkpoint',
-        hint: 'Create milestone save commit in this repository',
-      },
-      {
-        value: 'rollback',
-        label: '⏪ Rollback / Undo',
-        hint: 'Restore previous milestone with safety stash',
-      },
-      {
-        value: 'back',
-        label: '↩ Back to Project List',
-        hint: '',
-      },
-    ],
+    options: actionsList,
   });
 
   if (p.isCancel(contextAction) || contextAction === 'back') {
@@ -386,9 +421,40 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   }
 
   if (contextAction === 'code') {
+    openInEditor(targetProject.path);
     emitIpcToken('code', targetProject.path, { configDir: options?.configDir });
-    p.outro(`Emitted IPC token. Opening ${targetProject.name} in VS Code.`);
+    p.outro(`Opening ${targetProject.name} in VS Code.`);
     return 'exit';
+  }
+
+  if (contextAction === 'graduate') {
+    try {
+      const result = await graduateThrowaway(targetProject.name, { configDir: options?.configDir });
+      p.note(`Graduated throwaway "${result.name}" to ${result.path}`, 'Project Graduated');
+    } catch (err: any) {
+      p.log.error(err.message);
+    }
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'extend') {
+    try {
+      const result = extendThrowaway(targetProject.name, 3, { configDir: options?.configDir });
+      p.note(`Extended throwaway "${result.name}" until ${result.expiresAt}`, 'TTL Extended');
+    } catch (err: any) {
+      p.log.error(err.message);
+    }
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'delete') {
+    try {
+      const result = deleteThrowaway(targetProject.name, { configDir: options?.configDir });
+      p.note(`Deleted throwaway "${result.name}"`, 'Throwaway Deleted');
+    } catch (err: any) {
+      p.log.error(err.message);
+    }
+    return interactiveViewProjects(options);
   }
 
   if (contextAction === 'checkpoint') {
@@ -455,8 +521,9 @@ export async function interactiveRules(options?: TuiOptions): Promise<void> {
     }
     p.note(content, 'Master AGENTS.md Rules');
   } else if (action === 'edit') {
+    openInEditor(agentsPath);
     emitIpcToken('code', agentsPath, { configDir: options?.configDir });
-    p.outro(`Emitted IPC token to open master AGENTS.md in VS Code (${agentsPath}).`);
+    p.outro(`Opening master AGENTS.md in VS Code (${agentsPath}).`);
   }
 }
 
@@ -533,8 +600,9 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
 
     if (!p.isCancel(nextAction)) {
       if (nextAction === 'code') {
+        openInEditor(result.path);
         emitIpcToken('code', result.path, { configDir: options?.configDir });
-        p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        p.outro(`Opening ${result.name} in VS Code.`);
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
@@ -547,10 +615,79 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
 }
 
 /**
+ * Prompts the user to handle any expired throwaway scratchpads (Delete, Extend, Graduate, or Skip).
+ */
+export async function handleExpiredThrowaways(options?: TuiOptions): Promise<void> {
+  const expired = checkExpiredThrowaways({ configDir: options?.configDir });
+  if (expired.length === 0) return;
+
+  p.log.warn(
+    pc.yellow(`Found ${expired.length} expired throwaway scratchpad${expired.length > 1 ? 's' : ''}.`)
+  );
+
+  for (const record of expired) {
+    const action = await p.select({
+      message: `Expired scratchpad: "${record.name}" (expired on ${record.expiresAt.slice(0, 10)})`,
+      options: [
+        {
+          value: 'delete',
+          label: '🗑️ Delete scratchpad',
+          hint: 'Purge folder from disk and remove metadata',
+        },
+        {
+          value: 'extend',
+          label: '⏳ Extend TTL (+3 days)',
+          hint: 'Keep scratchpad active for 3 more days',
+        },
+        {
+          value: 'graduate',
+          label: '🎓 Graduate to permanent project',
+          hint: 'Move to canonical projects root and initialize Git',
+        },
+        {
+          value: 'skip',
+          label: '⏭️ Skip for now',
+          hint: 'Decide later',
+        },
+      ],
+    });
+
+    if (p.isCancel(action) || action === 'skip') {
+      continue;
+    }
+
+    if (action === 'delete') {
+      try {
+        deleteThrowaway(record.name, { configDir: options?.configDir });
+        p.log.success(`Deleted expired scratchpad "${record.name}".`);
+      } catch (err: any) {
+        p.log.error(`Failed to delete "${record.name}": ${err.message}`);
+      }
+    } else if (action === 'extend') {
+      try {
+        const updated = extendThrowaway(record.name, 3, { configDir: options?.configDir });
+        p.log.success(`Extended "${record.name}" until ${updated.expiresAt.slice(0, 10)}.`);
+      } catch (err: any) {
+        p.log.error(`Failed to extend "${record.name}": ${err.message}`);
+      }
+    } else if (action === 'graduate') {
+      try {
+        const grad = await graduateThrowaway(record.name, { configDir: options?.configDir });
+        p.log.success(`Graduated "${record.name}" to ${grad.path}.`);
+      } catch (err: any) {
+        p.log.error(`Failed to graduate "${record.name}": ${err.message}`);
+      }
+    }
+  }
+}
+
+/**
  * Top-Level Clack TUI Dashboard Runner.
  */
 export async function launchInteractiveDashboard(options?: TuiOptions): Promise<void> {
   p.intro(pc.bgCyan(pc.black('  PROJ WORKSPACE DASHBOARD  ')));
+
+  await handleExpiredThrowaways(options);
 
   let running = true;
   while (running) {
