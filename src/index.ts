@@ -85,8 +85,8 @@ export function createProgram(): Command {
           parentDir: config.projectsRoot,
         });
         process.stdout.write(`Successfully created project "${result.name}" at ${result.path}\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -140,8 +140,8 @@ export function createProgram(): Command {
           process.stdout.write(
             `Successfully created throwaway scratchpad "${result.name}" at ${result.path} (expires: ${result.expiresAt})\n`
           );
-        } catch (err: any) {
-          process.stderr.write(`Error: ${err.message}\n`);
+        } catch (err: unknown) {
+          process.stderr.write(`Error: ${(err as Error).message}\n`);
           process.exitCode = 1;
         }
       }
@@ -156,8 +156,8 @@ export function createProgram(): Command {
         process.stdout.write(
           `Successfully graduated throwaway "${result.name}" to ${result.path}\n`
         );
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -172,8 +172,8 @@ export function createProgram(): Command {
         process.stdout.write(
           `Successfully extended throwaway "${result.name}" by ${days} days (new expiration: ${result.expiresAt})\n`
         );
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -187,19 +187,33 @@ export function createProgram(): Command {
       try {
         const result = deleteThrowaway(name);
         process.stdout.write(`Successfully deleted throwaway "${result.name}"\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
 
   program
     .command('expired')
-    .description('List expired throwaway scratchpads')
+    .alias('prune-expired')
+    .description('List or batch delete expired throwaway scratchpads')
+    .option('-d, --delete', 'Delete all expired throwaway scratchpads')
     .option('--json', 'Output expired list in JSON format')
-    .action((options: { json?: boolean }) => {
+    .action(async (options: { delete?: boolean; json?: boolean }) => {
       try {
         const expired = checkExpiredThrowaways();
+        if (options.delete) {
+          if (expired.length === 0) {
+            process.stdout.write('No expired throwaways found.\n');
+            return;
+          }
+          for (const exp of expired) {
+            const result = deleteThrowaway(exp.name);
+            process.stdout.write(`Successfully deleted throwaway "${result.name}"\n`);
+          }
+          return;
+        }
+
         if (options.json) {
           process.stdout.write(JSON.stringify(expired, null, 2) + '\n');
         } else if (expired.length === 0) {
@@ -210,8 +224,8 @@ export function createProgram(): Command {
             process.stdout.write(`- ${exp.name} (expired at ${exp.expiresAt}) -> ${exp.path}\n`);
           }
         }
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -227,8 +241,8 @@ export function createProgram(): Command {
         process.stdout.write(
           `Successfully created checkpoint ${result.shortHash} ("${result.message}")\n`
         );
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -251,8 +265,8 @@ export function createProgram(): Command {
         } else {
           process.stdout.write(formatCheckpointsTable(checkpoints) + '\n');
         }
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -274,8 +288,8 @@ export function createProgram(): Command {
 
         const result = await rollbackCheckpoint(process.cwd(), target);
         process.stdout.write(formatRollbackSummary(result) + '\n');
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -288,8 +302,8 @@ export function createProgram(): Command {
       try {
         const result = await adoptProject(folderPath, { name: options.name });
         process.stdout.write(`Successfully adopted project "${result.name}" at ${result.path}\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -310,8 +324,8 @@ export function createProgram(): Command {
         try {
           const content = fs.readFileSync(agentsPath, 'utf8');
           process.stdout.write(content + '\n');
-        } catch (err: any) {
-          process.stderr.write(`Error reading master rules: ${err.message}\n`);
+        } catch (err: unknown) {
+          process.stderr.write(`Error reading master rules: ${(err as Error).message}\n`);
           process.exitCode = 1;
         }
       } else {
@@ -356,8 +370,8 @@ export function createProgram(): Command {
 
         emitIpcToken('code', targetPath);
         process.stdout.write(`Opening project "${name}" in VS Code at ${targetPath}\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -390,8 +404,8 @@ export function createProgram(): Command {
             process.exitCode = 1;
           }
         }
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });

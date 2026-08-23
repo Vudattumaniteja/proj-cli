@@ -321,6 +321,125 @@ describe('proj CLI basic interface', () => {
     }
   });
 
+  it('runs expired -d when no expired throwaways exist and prints cleanly', async () => {
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'expired', '-d']);
+      expect(output).toContain('No expired throwaways found.');
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs expired --delete and purges multiple expired throwaways from disk and config', async () => {
+    const p1 = path.join(throwawaysDir, 'expired-app-1');
+    const p2 = path.join(throwawaysDir, 'expired-app-2');
+    const p3 = path.join(throwawaysDir, 'active-app');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.mkdirSync(p2, { recursive: true });
+    fs.mkdirSync(p3, { recursive: true });
+
+    updateConfig({
+      throwaways: {
+        'expired-app-1': {
+          name: 'expired-app-1',
+          path: p1,
+          createdAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-01-03T00:00:00.000Z',
+          ttlDays: 2,
+          template: 'minimal',
+        },
+        'expired-app-2': {
+          name: 'expired-app-2',
+          path: p2,
+          createdAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-01-04T00:00:00.000Z',
+          ttlDays: 3,
+          template: 'typescript',
+        },
+        'active-app': {
+          name: 'active-app',
+          path: p3,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 86400000 * 5).toISOString(),
+          ttlDays: 5,
+          template: 'minimal',
+        },
+      },
+    });
+
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'expired', '--delete']);
+      expect(output).toContain('Successfully deleted throwaway "expired-app-1"');
+      expect(output).toContain('Successfully deleted throwaway "expired-app-2"');
+      expect(output).not.toContain('active-app');
+
+      expect(fs.existsSync(p1)).toBe(false);
+      expect(fs.existsSync(p2)).toBe(false);
+      expect(fs.existsSync(p3)).toBe(true);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs prune-expired alias command to list and prune expired scratchpads with -d', async () => {
+    const p1 = path.join(throwawaysDir, 'prune-me');
+    fs.mkdirSync(p1, { recursive: true });
+
+    updateConfig({
+      throwaways: {
+        'prune-me': {
+          name: 'prune-me',
+          path: p1,
+          createdAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-01-02T00:00:00.000Z',
+          ttlDays: 1,
+          template: 'minimal',
+        },
+      },
+    });
+
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      // 1. List via prune-expired alias
+      await program.parseAsync(['node', 'proj', 'prune-expired']);
+      expect(output).toContain('Found 1 expired throwaway(s):');
+      expect(output).toContain('prune-me');
+
+      // 2. Prune via prune-expired -d
+      output = '';
+      const program2 = createProgram();
+      await program2.parseAsync(['node', 'proj', 'prune-expired', '-d']);
+      expect(output).toContain('Successfully deleted throwaway "prune-me"');
+      expect(fs.existsSync(p1)).toBe(false);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+
   it('runs checkpoint, checkpoints, and undo CLI commands against a Git project', async () => {
     const program = createProgram();
     let output = '';

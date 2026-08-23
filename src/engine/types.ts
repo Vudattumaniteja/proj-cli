@@ -9,6 +9,8 @@ export interface ProjectInfo {
   templateBadge: string;
   lastModified: Date;
   isThrowaway: boolean;
+  expiresAt?: string;
+  isExpired?: boolean;
 }
 
 export type ProjectTemplate = 'minimal' | 'typescript' | 'python' | 'web';
@@ -38,6 +40,8 @@ export interface ScaffoldResult {
 export interface DiscoveryOptions {
   throwawaysRoot?: string;
   includeThrowaways?: boolean;
+  configDir?: string;
+  now?: Date | string | number;
 }
 
 export interface FormatOptions {

@@ -103,6 +103,21 @@ export async function createThrowaway(
 }
 
 /**
+ * Checks whether a throwaway scratchpad record has expired given a reference time.
+ */
+export function isThrowawayExpired(
+  record: ThrowawayRecord,
+  now?: Date | string | number
+): boolean {
+  if (!record?.expiresAt) {
+    return false;
+  }
+  const refTime = now !== undefined ? new Date(now).getTime() : Date.now();
+  const expireTime = new Date(record.expiresAt).getTime();
+  return refTime > expireTime;
+}
+
+/**
  * Checks and returns all throwaways whose expiration timestamp has passed.
  */
 export function checkExpiredThrowaways(
@@ -110,13 +125,11 @@ export function checkExpiredThrowaways(
 ): ThrowawayRecord[] {
   const config = getConfig({ configDir: options?.configDir });
   const throwaways = config.throwaways || {};
-  const refTime = options?.now ? new Date(options.now).getTime() : Date.now();
 
   const expired: ThrowawayRecord[] = [];
 
   for (const record of Object.values(throwaways)) {
-    const expireTime = new Date(record.expiresAt).getTime();
-    if (refTime > expireTime) {
+    if (isThrowawayExpired(record, options?.now)) {
       expired.push(record);
     }
   }
@@ -147,9 +160,11 @@ export function extendThrowaway(
     throw new Error(`Throwaway "${trimmedName}" not found in configuration`);
   }
 
+  const nowTime = options?.now !== undefined ? new Date(options.now).getTime() : Date.now();
   const currentExpiresTime = new Date(record.expiresAt).getTime();
+  const baseTime = Math.max(nowTime, currentExpiresTime);
   const newExpiresAt = new Date(
-    currentExpiresTime + days * 24 * 60 * 60 * 1000
+    baseTime + days * 24 * 60 * 60 * 1000
   ).toISOString();
 
   const updatedRecord: ThrowawayRecord = {
