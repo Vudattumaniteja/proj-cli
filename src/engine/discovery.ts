@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { simpleGit } from 'simple-git';
+import { getConfig } from '../config/index.js';
 import type { ProjectInfo, DiscoveryOptions } from './types.js';
 
 export * from './types.js';
@@ -120,11 +121,32 @@ export function getTemplateBadge(templateType: string | null): string {
  */
 export async function inspectProject(
   projectPath: string,
-  options?: { isThrowaway?: boolean }
+  options?: {
+    isThrowaway?: boolean;
+    configDir?: string;
+    now?: Date | string | number;
+  }
 ): Promise<ProjectInfo> {
   const resolvedPath = path.resolve(projectPath);
   const name = path.basename(resolvedPath);
   const isThrowaway = options?.isThrowaway ?? false;
+
+  let expiresAt: string | undefined;
+  let isExpired: boolean | undefined;
+
+  if (isThrowaway) {
+    try {
+      const config = getConfig({ configDir: options?.configDir });
+      const record = config.throwaways?.[name];
+      if (record?.expiresAt) {
+        expiresAt = record.expiresAt;
+        const refTime = options?.now ? new Date(options.now).getTime() : Date.now();
+        isExpired = refTime > new Date(record.expiresAt).getTime();
+      }
+    } catch {
+      // Gracefully handle config errors
+    }
+  }
 
   let lastModified = new Date(0);
   try {
@@ -171,6 +193,8 @@ export async function inspectProject(
     templateBadge,
     lastModified,
     isThrowaway,
+    expiresAt,
+    isExpired,
   };
 }
 
@@ -208,7 +232,11 @@ export async function listProjects(
         continue;
       }
 
-      const info = await inspectProject(fullPath, { isThrowaway: false });
+      const info = await inspectProject(fullPath, {
+        isThrowaway: false,
+        configDir: options?.configDir,
+        now: options?.now,
+      });
       results.push(info);
     }
   }
@@ -228,7 +256,11 @@ export async function listProjects(
       if (entry.name.startsWith('.')) continue;
 
       const fullPath = path.join(resolvedThrowawaysRoot, entry.name);
-      const info = await inspectProject(fullPath, { isThrowaway: true });
+      const info = await inspectProject(fullPath, {
+        isThrowaway: true,
+        configDir: options?.configDir,
+        now: options?.now,
+      });
       results.push(info);
     }
   }
@@ -252,7 +284,10 @@ export function formatProjectsTable(projects: ProjectInfo[]): string {
   }
 
   const rows = projects.map((p) => {
-    const displayName = p.isThrowaway ? `${p.name} (throwaway)` : p.name;
+    let displayName = p.name;
+    if (p.isThrowaway) {
+      displayName = p.isExpired ? `${p.name} (throwaway: expired)` : `${p.name} (throwaway)`;
+    }
     const branch = p.isGit ? p.branch || 'HEAD' : '-';
     const status = p.isGit
       ? p.dirtyCount === 0

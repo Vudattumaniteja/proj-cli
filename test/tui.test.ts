@@ -166,6 +166,117 @@ describe('Clack TUI Dashboard & Interactive Wizards', () => {
     expect(token?.targetPath).toBe(path.join(projectsDir, 'code-open-app'));
   });
 
+  it('runs interactiveViewProjects and formats throwaways with badges including [throwaway: EXPIRED]', async () => {
+    const pastDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    const futureDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+
+    await createThrowaway('expired-tui-app', 1, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+      now: pastDate,
+    });
+    await createThrowaway('active-tui-app', 1, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+      now: futureDate,
+    });
+
+    // Cancel / back out from selection
+    vi.mocked(p.select).mockResolvedValueOnce('__back__');
+
+    const result = await interactiveViewProjects({ configDir: tempDir });
+    expect(result).toBe('back');
+
+    const selectCalls = vi.mocked(p.select).mock.calls;
+    const projectPickerCall = selectCalls[0][0] as any;
+    const options = projectPickerCall.options;
+
+    const expiredOption = options.find((opt: any) => opt.value === 'expired-tui-app');
+    expect(expiredOption).toBeDefined();
+    expect(expiredOption.label).toContain('[throwaway: EXPIRED]');
+
+    const activeOption = options.find((opt: any) => opt.value === 'active-tui-app');
+    expect(activeOption).toBeDefined();
+    expect(activeOption.label).toContain('[throwaway]');
+    expect(activeOption.label).not.toContain('[throwaway: EXPIRED]');
+  });
+
+  it('runs interactiveViewProjects context action to graduate a throwaway project', async () => {
+    await createThrowaway('grad-tui-app', 3, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+    });
+
+    const scratchPath = path.join(throwawaysDir, 'grad-tui-app');
+    const permPath = path.join(projectsDir, 'grad-tui-app');
+    expect(fs.existsSync(scratchPath)).toBe(true);
+
+    // 1. Select project: 'grad-tui-app'
+    vi.mocked(p.select).mockResolvedValueOnce('grad-tui-app');
+    // 2. Select action: 'graduate'
+    vi.mocked(p.select).mockResolvedValueOnce('graduate');
+    // 3. Next iteration (returns to project list): cancel / back
+    vi.mocked(p.select).mockResolvedValueOnce('__back__');
+
+    const result = await interactiveViewProjects({ configDir: tempDir });
+    expect(result).toBe('back');
+
+    expect(fs.existsSync(scratchPath)).toBe(false);
+    expect(fs.existsSync(permPath)).toBe(true);
+    expect(fs.existsSync(path.join(permPath, '.git'))).toBe(true);
+  });
+
+  it('runs interactiveViewProjects context action to extend throwaway TTL', async () => {
+    const created = await createThrowaway('ext-tui-app', 2, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+    });
+
+    // 1. Select project
+    vi.mocked(p.select).mockResolvedValueOnce('ext-tui-app');
+    // 2. Select action: 'extend'
+    vi.mocked(p.select).mockResolvedValueOnce('extend');
+    // 3. Return to list: back
+    vi.mocked(p.select).mockResolvedValueOnce('__back__');
+
+    await interactiveViewProjects({ configDir: tempDir });
+
+    const cfg = getConfig({ configDir: tempDir });
+    const record = cfg.throwaways?.['ext-tui-app'];
+    expect(record).toBeDefined();
+    expect(record?.ttlDays).toBe(5); // 2 + 3
+    expect(new Date(record!.expiresAt).getTime()).toBeGreaterThan(
+      new Date(created.expiresAt).getTime()
+    );
+  });
+
+  it('runs interactiveViewProjects context action to delete throwaway', async () => {
+    await scaffoldProject('permanent-app', 'minimal', {
+      configDir: tempDir,
+      parentDir: projectsDir,
+    });
+    await createThrowaway('del-tui-app', 2, 'minimal', {
+      configDir: tempDir,
+      throwawaysRoot: throwawaysDir,
+    });
+
+    const scratchPath = path.join(throwawaysDir, 'del-tui-app');
+    expect(fs.existsSync(scratchPath)).toBe(true);
+
+    // 1. Select project
+    vi.mocked(p.select).mockResolvedValueOnce('del-tui-app');
+    // 2. Select action: 'delete'
+    vi.mocked(p.select).mockResolvedValueOnce('delete');
+    // 3. Return to list: back
+    vi.mocked(p.select).mockResolvedValueOnce('__back__');
+
+    await interactiveViewProjects({ configDir: tempDir });
+
+    expect(fs.existsSync(scratchPath)).toBe(false);
+    const cfg = getConfig({ configDir: tempDir });
+    expect(cfg.throwaways?.['del-tui-app']).toBeUndefined();
+  });
+
   it('runs interactiveRollback selector to rollback git repository to chosen checkpoint', async () => {
     const projResult = await scaffoldProject('rollback-test-app', 'minimal', {
       configDir: tempDir,

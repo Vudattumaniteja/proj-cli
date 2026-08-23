@@ -295,6 +295,8 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   try {
     projects = await listProjects(config.projectsRoot, {
       throwawaysRoot: config.throwawaysRoot,
+      configDir: options?.configDir,
+      now: options?.now,
     });
     s.stop(`Discovered ${projects.length} project(s).`);
   } catch (err: any) {
@@ -320,7 +322,12 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
         }`
       : pc.dim('non-git');
 
-    const throwawayBadge = proj.isThrowaway ? pc.magenta(' [throwaway]') : '';
+    let throwawayBadge = '';
+    if (proj.isThrowaway) {
+      throwawayBadge = proj.isExpired
+        ? pc.red(' [throwaway: EXPIRED]')
+        : pc.magenta(' [throwaway]');
+    }
     const badge = pc.dim(proj.templateBadge);
 
     return {
@@ -349,35 +356,58 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   if (!targetProject) return 'back';
 
   // Context Actions Menu for selected project
+  const actionOptions: Array<{ value: string; label: string; hint?: string }> = [
+    {
+      value: 'jump',
+      label: '🚀 Jump (cd)',
+      hint: `Navigate shell to ${targetProject.path}`,
+    },
+    {
+      value: 'code',
+      label: '💻 Open in VS Code',
+      hint: 'Emit IPC token to open in VS Code',
+    },
+    {
+      value: 'checkpoint',
+      label: '💾 Save Checkpoint',
+      hint: 'Create milestone save commit in this repository',
+    },
+    {
+      value: 'rollback',
+      label: '⏪ Rollback / Undo',
+      hint: 'Restore previous milestone with safety stash',
+    },
+  ];
+
+  if (targetProject.isThrowaway) {
+    actionOptions.push(
+      {
+        value: 'graduate',
+        label: '🎓 Graduate to Permanent Project',
+        hint: 'Promote to permanent project in canonical workspace',
+      },
+      {
+        value: 'extend',
+        label: '⏳ Extend TTL (+3 days)',
+        hint: 'Extend expiration by 3 days',
+      },
+      {
+        value: 'delete',
+        label: '🗑️ Delete Throwaway',
+        hint: 'Permanently remove from disk and config',
+      }
+    );
+  }
+
+  actionOptions.push({
+    value: 'back',
+    label: pc.dim('↩ Back to Project List'),
+    hint: '',
+  });
+
   const contextAction = await p.select({
     message: `Actions for "${targetProject.name}":`,
-    options: [
-      {
-        value: 'jump',
-        label: '🚀 Jump (cd)',
-        hint: `Navigate shell to ${targetProject.path}`,
-      },
-      {
-        value: 'code',
-        label: '💻 Open in VS Code',
-        hint: 'Emit IPC token to open in VS Code',
-      },
-      {
-        value: 'checkpoint',
-        label: '💾 Save Checkpoint',
-        hint: 'Create milestone save commit in this repository',
-      },
-      {
-        value: 'rollback',
-        label: '⏪ Rollback / Undo',
-        hint: 'Restore previous milestone with safety stash',
-      },
-      {
-        value: 'back',
-        label: '↩ Back to Project List',
-        hint: '',
-      },
-    ],
+    options: actionOptions,
   });
 
   if (p.isCancel(contextAction) || contextAction === 'back') {
@@ -424,6 +454,53 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
 
   if (contextAction === 'rollback') {
     await interactiveRollback(targetProject.path, options);
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'graduate') {
+    const gradSpinner = p.spinner();
+    gradSpinner.start(`Graduating throwaway "${targetProject.name}" to canonical workspace...`);
+    try {
+      const grad = await graduateThrowaway(targetProject.name, { configDir: options?.configDir });
+      gradSpinner.stop(`Successfully graduated "${grad.name}" to ${grad.path}.`);
+      p.note(
+        `Project Name: ${grad.name}\nCanonical Path: ${grad.path}\nGit Initialized: ${grad.isGit ? 'Yes' : 'No'}`,
+        'Throwaway Graduated'
+      );
+    } catch (err: any) {
+      gradSpinner.stop(`Failed to graduate "${targetProject.name}".`);
+      p.log.error(err.message);
+    }
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'extend') {
+    const extSpinner = p.spinner();
+    extSpinner.start(`Extending throwaway "${targetProject.name}" (+3 days)...`);
+    try {
+      const updated = extendThrowaway(targetProject.name, 3, { configDir: options?.configDir });
+      extSpinner.stop(`Extended "${updated.name}" (new expiration: ${updated.expiresAt}).`);
+      p.note(
+        `New Expiration: ${updated.expiresAt}\nTotal TTL: ${updated.ttlDays} day(s)`,
+        'Throwaway Extended'
+      );
+    } catch (err: any) {
+      extSpinner.stop(`Failed to extend "${targetProject.name}".`);
+      p.log.error(err.message);
+    }
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'delete') {
+    const delSpinner = p.spinner();
+    delSpinner.start(`Deleting throwaway "${targetProject.name}"...`);
+    try {
+      deleteThrowaway(targetProject.name, { configDir: options?.configDir });
+      delSpinner.stop(`Deleted throwaway "${targetProject.name}".`);
+    } catch (err: any) {
+      delSpinner.stop(`Failed to delete "${targetProject.name}".`);
+      p.log.error(err.message);
+    }
     return interactiveViewProjects(options);
   }
 

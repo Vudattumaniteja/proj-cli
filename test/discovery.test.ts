@@ -118,6 +118,81 @@ describe('Project Discovery Engine', () => {
       expect(projects).toHaveLength(1);
       expect(projects[0].name).toBe('core-app');
     });
+
+    it('populates isExpired and expiresAt metadata for throwaways from config.json', async () => {
+      const pastTime = new Date('2026-08-01T00:00:00.000Z').toISOString();
+      const futureTime = new Date('2026-08-30T00:00:00.000Z').toISOString();
+      const mockNow = new Date('2026-08-20T00:00:00.000Z').getTime();
+
+      const scratchExpired = path.join(throwawaysDir, 'scratch-expired');
+      const scratchActive = path.join(throwawaysDir, 'scratch-active');
+      const regularApp = path.join(canonicalProjects, 'regular-app');
+      fs.mkdirSync(scratchExpired);
+      fs.mkdirSync(scratchActive);
+      fs.mkdirSync(regularApp);
+
+      // Create custom config.json
+      const configDir = path.join(tempRoot, 'config');
+      fs.mkdirSync(configDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(configDir, 'config.json'),
+        JSON.stringify({
+          projectsRoot: canonicalProjects,
+          throwawaysRoot: throwawaysDir,
+          throwaways: {
+            'scratch-expired': {
+              name: 'scratch-expired',
+              path: scratchExpired,
+              createdAt: '2026-07-28T00:00:00.000Z',
+              expiresAt: pastTime,
+              ttlDays: 3,
+              template: 'minimal',
+            },
+            'scratch-active': {
+              name: 'scratch-active',
+              path: scratchActive,
+              createdAt: '2026-08-19T00:00:00.000Z',
+              expiresAt: futureTime,
+              ttlDays: 3,
+              template: 'minimal',
+            },
+          },
+        })
+      );
+
+      const projects = await listProjects(canonicalProjects, {
+        throwawaysRoot: throwawaysDir,
+        configDir,
+        now: mockNow,
+      });
+
+      const expProj = projects.find((p) => p.name === 'scratch-expired')!;
+      expect(expProj).toBeDefined();
+      expect(expProj.isThrowaway).toBe(true);
+      expect(expProj.isExpired).toBe(true);
+      expect(expProj.expiresAt).toBe(pastTime);
+
+      const actProj = projects.find((p) => p.name === 'scratch-active')!;
+      expect(actProj).toBeDefined();
+      expect(actProj.isThrowaway).toBe(true);
+      expect(actProj.isExpired).toBe(false);
+      expect(actProj.expiresAt).toBe(futureTime);
+
+      const regProj = projects.find((p) => p.name === 'regular-app')!;
+      expect(regProj).toBeDefined();
+      expect(regProj.isThrowaway).toBe(false);
+      expect(regProj.isExpired).toBeUndefined();
+      expect(regProj.expiresAt).toBeUndefined();
+
+      // Direct inspectProject test
+      const inspectedExpired = await inspectProject(scratchExpired, {
+        isThrowaway: true,
+        configDir,
+        now: mockNow,
+      });
+      expect(inspectedExpired.isExpired).toBe(true);
+      expect(inspectedExpired.expiresAt).toBe(pastTime);
+    });
   });
 
   describe('Template Detection', () => {
@@ -303,6 +378,22 @@ describe('Project Discovery Engine', () => {
         templateBadge: '[python]',
         lastModified: new Date('2026-08-19T11:00:00Z'),
         isThrowaway: true,
+        isExpired: false,
+        expiresAt: '2026-08-25T00:00:00.000Z',
+      },
+      {
+        name: 'expired-spike',
+        path: 'C:\\projects\\throwaways\\expired-spike',
+        isGit: false,
+        branch: null,
+        dirtyCount: 0,
+        isDirty: false,
+        templateType: 'minimal',
+        templateBadge: '[minimal]',
+        lastModified: new Date('2026-08-10T11:00:00Z'),
+        isThrowaway: true,
+        isExpired: true,
+        expiresAt: '2026-08-12T00:00:00.000Z',
       },
       {
         name: 'plain-folder',
@@ -318,20 +409,25 @@ describe('Project Discovery Engine', () => {
       },
     ];
 
-    it('formatProjectsJson() outputs valid JSON array representing project list', () => {
+    it('formatProjectsJson() outputs valid JSON array representing project list with expiration fields', () => {
       const jsonStr = formatProjectsJson(sampleProjects);
       const parsed = JSON.parse(jsonStr);
 
       expect(Array.isArray(parsed)).toBe(true);
-      expect(parsed).toHaveLength(3);
+      expect(parsed).toHaveLength(4);
       expect(parsed[0].name).toBe('web-portal');
       expect(parsed[0].templateBadge).toBe('[typescript]');
       expect(parsed[1].name).toBe('temp-spike');
       expect(parsed[1].dirtyCount).toBe(3);
       expect(parsed[1].isThrowaway).toBe(true);
+      expect(parsed[1].isExpired).toBe(false);
+      expect(parsed[1].expiresAt).toBe('2026-08-25T00:00:00.000Z');
+      expect(parsed[2].name).toBe('expired-spike');
+      expect(parsed[2].isExpired).toBe(true);
+      expect(parsed[2].expiresAt).toBe('2026-08-12T00:00:00.000Z');
     });
 
-    it('formatProjectsTable() outputs formatted table with headers and aligned columns', () => {
+    it('formatProjectsTable() outputs formatted table with (throwaway) and (throwaway: expired)', () => {
       const tableStr = formatProjectsTable(sampleProjects);
 
       expect(tableStr).toContain('NAME');
@@ -350,6 +446,9 @@ describe('Project Discovery Engine', () => {
       expect(tableStr).toContain('[python]');
       expect(tableStr).toContain('feat/poc');
       expect(tableStr).toContain('3 dirty');
+
+      expect(tableStr).toContain('expired-spike (throwaway: expired)');
+      expect(tableStr).toContain('[minimal]');
 
       expect(tableStr).toContain('plain-folder');
       expect(tableStr).toContain('[unknown]');
