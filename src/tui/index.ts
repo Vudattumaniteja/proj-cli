@@ -2,6 +2,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
+import { simpleGit } from 'simple-git';
+import { execa } from 'execa';
 import {
   getConfig,
   ensureConfigDirs,
@@ -24,12 +26,14 @@ import {
   fixDoctorIssues,
   formatDoctorReport,
   formatDoctorFixReport,
+  adoptProject,
+  publishProject,
+  deleteProject,
   SUPPORTED_TEMPLATES,
   type ProjectTemplate,
   type ProjectInfo,
   type CheckpointInfo,
 } from '../engine/index.js';
-import { adoptProject } from '../engine/adopt.js';
 
 export interface TuiOptions {
   configDir?: string;
@@ -385,6 +389,20 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
     },
   ];
 
+  if (!targetProject.hasRemote) {
+    actionOptions.push({
+      value: 'publish',
+      label: '☁️ Publish to GitHub (Private)',
+      hint: 'Create private GitHub repository and push',
+    });
+  } else {
+    actionOptions.push({
+      value: 'open-github',
+      label: '🌐 Open on GitHub',
+      hint: targetProject.githubRepo?.webUrl || targetProject.remoteUrl || 'Open repository on GitHub',
+    });
+  }
+
   if (targetProject.isThrowaway) {
     actionOptions.push(
       {
@@ -403,6 +421,12 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
         hint: 'Permanently remove from disk and config',
       }
     );
+  } else {
+    actionOptions.push({
+      value: 'delete',
+      label: '🗑️ Delete Project',
+      hint: 'Delete project locally or from GitHub',
+    });
   }
 
   actionOptions.push({
@@ -430,6 +454,41 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
     emitIpcToken('code', targetProject.path, { configDir: options?.configDir });
     p.outro(`Emitted IPC token. Opening ${targetProject.name} in VS Code.`);
     return 'exit';
+  }
+
+  if (contextAction === 'open-github') {
+    const webUrl = targetProject.githubRepo?.webUrl || targetProject.remoteUrl || '';
+    try {
+      await execa('gh', ['browse'], { cwd: targetProject.path });
+      p.outro(`Opened ${webUrl || targetProject.name} on GitHub.`);
+    } catch {
+      // Fallback if gh browse is not installed or fails
+    }
+    if (webUrl) {
+      p.note(`Repository URL: ${webUrl}`, 'GitHub Repository');
+    }
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'publish') {
+    const pubSpinner = p.spinner();
+    pubSpinner.start(`Publishing "${targetProject.name}" to private GitHub repository...`);
+    try {
+      const result = await publishProject(targetProject.name, {
+        configDir: options?.configDir,
+        projectsRoot: config.projectsRoot,
+        throwawaysRoot: config.throwawaysRoot,
+      });
+      pubSpinner.stop(`Successfully published "${result.name}" to GitHub.`);
+      p.note(
+        `Repository URL: ${result.repoUrl}\nVisibility: Private\nProject Path: ${result.path}`,
+        'Published to GitHub'
+      );
+    } catch (err: unknown) {
+      pubSpinner.stop('Failed to publish project to GitHub.');
+      p.log.error(err instanceof Error ? err.message : String(err));
+    }
+    return interactiveViewProjects(options);
   }
 
   if (contextAction === 'checkpoint') {
@@ -498,15 +557,116 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   }
 
   if (contextAction === 'delete') {
+    if (targetProject.isThrowaway) {
+      const delSpinner = p.spinner();
+      delSpinner.start(`Deleting throwaway "${targetProject.name}"...`);
+      try {
+        deleteThrowaway(targetProject.name, { configDir: options?.configDir });
+        delSpinner.stop(`Deleted throwaway "${targetProject.name}".`);
+      } catch (err: unknown) {
+        delSpinner.stop(`Failed to delete "${targetProject.name}".`);
+        p.log.error(err instanceof Error ? err.message : String(err));
+      }
+      return interactiveViewProjects(options);
+    }
+
+    let deleteCloud = false;
+    if (targetProject.hasRemote) {
+      const deleteScope = await p.select({
+        message: `Select deletion scope for "${targetProject.name}":`,
+        options: [
+          {
+            value: 'local',
+            label: 'Delete locally only',
+            hint: 'Keep remote GitHub repository intact',
+          },
+          {
+            value: 'cloud',
+            label: 'Delete GitHub repo in cloud and locally',
+            hint: 'Permanently delete remote GitHub repo and local directory',
+          },
+        ],
+      });
+
+      if (p.isCancel(deleteScope)) {
+        p.cancel('Project deletion cancelled.');
+        return interactiveViewProjects(options);
+      }
+
+      deleteCloud = deleteScope === 'cloud';
+    }
+
+    const confirmed = await p.confirm({
+      message: 'Are you sure you want to delete this project? Press Enter to confirm.',
+      initialValue: false,
+    });
+
+    if (p.isCancel(confirmed) || !confirmed) {
+      p.cancel('Project deletion cancelled.');
+      return interactiveViewProjects(options);
+    }
+
+    let isDirty = targetProject.isDirty;
+    let dirtyCount = targetProject.dirtyCount;
+    if (targetProject.isGit) {
+      try {
+        const git = simpleGit(targetProject.path, { maxConcurrentProcesses: 2 });
+        const st = await git.status();
+        dirtyCount = st.files.length;
+        isDirty = dirtyCount > 0;
+      } catch {
+        // Fall back to targetProject values
+      }
+    }
+
+    if (isDirty) {
+      p.log.warn(
+        pc.yellow(
+          `Warning: Working tree has ${dirtyCount} uncommitted change${
+            dirtyCount === 1 ? '' : 's'
+          }!`
+        )
+      );
+
+      const confirmDirty = await p.confirm({
+        message: `Working tree is dirty (${dirtyCount} uncommitted change${
+          dirtyCount === 1 ? '' : 's'
+        }). Confirm deletion?`,
+        initialValue: false,
+      });
+
+      if (p.isCancel(confirmDirty) || !confirmDirty) {
+        p.cancel('Project deletion cancelled.');
+        return interactiveViewProjects(options);
+      }
+    }
+
     const delSpinner = p.spinner();
-    delSpinner.start(`Deleting throwaway "${targetProject.name}"...`);
+    delSpinner.start(
+      `Deleting project "${targetProject.name}"${deleteCloud ? ' (local & cloud)' : ''}...`
+    );
+
     try {
-      deleteThrowaway(targetProject.name, { configDir: options?.configDir });
-      delSpinner.stop(`Deleted throwaway "${targetProject.name}".`);
+      const result = await deleteProject(targetProject.path, {
+        cloud: deleteCloud,
+        force: isDirty,
+        configDir: options?.configDir,
+        projectsRoot: config.projectsRoot,
+        throwawaysRoot: config.throwawaysRoot,
+      });
+
+      if (result.cloudDeleted) {
+        delSpinner.stop(
+          `Successfully deleted project "${result.name}" locally and from GitHub.`
+        );
+      } else {
+        delSpinner.stop(`Successfully deleted project "${result.name}".`);
+      }
     } catch (err: unknown) {
-      delSpinner.stop(`Failed to delete "${targetProject.name}".`);
+      delSpinner.stop('Failed to delete project.');
       p.log.error(err instanceof Error ? err.message : String(err));
     }
+
     return interactiveViewProjects(options);
   }
 
