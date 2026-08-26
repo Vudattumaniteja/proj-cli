@@ -29,6 +29,8 @@ import {
   formatDoctorReport,
   formatDoctorFixReport,
   adoptProject,
+  deleteProject,
+  publishProject,
   SUPPORTED_TEMPLATES,
   type ProjectTemplate,
 } from './engine/index.js';
@@ -318,6 +320,47 @@ export function createProgram(): Command {
       try {
         const result = await adoptProject(folderPath, { name: options.name });
         process.stdout.write(`Successfully adopted project "${result.name}" at ${result.path}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('delete <name>')
+    .alias('rm')
+    .description('Delete target workspace project locally and optionally from GitHub')
+    .option('--cloud', 'Delete the associated remote GitHub repository')
+    .option('-f, --force', 'Bypass dirty working tree checks')
+    .action(async (name: string, options: { cloud?: boolean; force?: boolean } = {}) => {
+      try {
+        const result = await deleteProject(name, {
+          cloud: options.cloud,
+          force: options.force,
+        });
+        if (result.cloudDeleted) {
+          process.stdout.write(
+            `Successfully deleted project "${result.name}" locally and from GitHub\n`
+          );
+        } else {
+          process.stdout.write(`Successfully deleted project "${result.name}"\n`);
+        }
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('publish [name]')
+    .description('Publish a workspace project or current directory to a private GitHub repository')
+    .action(async (name?: string) => {
+      try {
+        const target = name && name.trim() ? name.trim() : '.';
+        const result = await publishProject(target);
+        process.stdout.write(
+          `Successfully published project "${result.name}" to GitHub (${result.repoUrl})\n`
+        );
       } catch (err: unknown) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
