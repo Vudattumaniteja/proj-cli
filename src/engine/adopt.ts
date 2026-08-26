@@ -4,6 +4,7 @@ import { simpleGit } from 'simple-git';
 import {
   getConfig,
   getTemplatesDir,
+  normalizeInputPath,
   DEFAULT_AGENTS_TEMPLATE,
   DEFAULT_GITIGNORE_TEMPLATE,
   DEFAULT_AGENTS_TEMPLATE_NAME,
@@ -26,7 +27,12 @@ export async function adoptProject(
     throw new Error('Invalid folder path: path cannot be empty');
   }
 
-  const resolvedSource = path.resolve(folderPath.trim());
+  let resolvedSource: string;
+  try {
+    resolvedSource = normalizeInputPath(folderPath);
+  } catch (err: unknown) {
+    throw new Error(`Invalid folder path: ${err instanceof Error ? err.message : 'path cannot be empty'}`);
+  }
 
   if (!fs.existsSync(resolvedSource)) {
     throw new Error(`Cannot adopt folder: "${resolvedSource}" does not exist`);

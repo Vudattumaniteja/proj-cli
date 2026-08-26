@@ -141,6 +141,26 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
       expect(result.repaired).toBe(true);
       expect(result.action).toBe('already-valid');
     });
+
+    it('safely replaces an existing directory containing only system files (desktop.ini)', () => {
+      fs.mkdirSync(customDesktopJunction, { recursive: true });
+      fs.writeFileSync(path.join(customDesktopJunction, 'desktop.ini'), '[.ShellClassInfo]\nIconResource=...', 'utf8');
+
+      const result = repairJunction(customDesktopJunction, customProjectsRoot);
+      expect(result.repaired).toBe(true);
+
+      const status = verifyJunction(customDesktopJunction, customProjectsRoot);
+      expect(status.valid).toBe(true);
+    });
+
+    it('refuses to replace an existing directory containing user files', () => {
+      fs.mkdirSync(customDesktopJunction, { recursive: true });
+      fs.writeFileSync(path.join(customDesktopJunction, 'my-important-file.txt'), 'do not delete', 'utf8');
+
+      const result = repairJunction(customDesktopJunction, customProjectsRoot);
+      expect(result.repaired).toBe(false);
+      expect(result.error).toContain('Cannot replace non-empty directory');
+    });
   });
 
   describe('runDoctor()', () => {
@@ -274,6 +294,32 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
 
       const junctionStatus = verifyJunction(missingJunction, missingProjects);
       expect(junctionStatus.valid).toBe(true);
+    });
+
+    it('heals corrupted temporary projectsRoot in config back to default', async () => {
+      const corruptConfigDir = path.join(tempDir, 'corrupt-config');
+      fs.mkdirSync(corruptConfigDir, { recursive: true });
+
+      const deadTempPath = path.join(os.tmpdir(), 'dead-test-projects-' + Date.now());
+      fs.writeFileSync(
+        path.join(corruptConfigDir, 'config.json'),
+        JSON.stringify({
+          projectsRoot: deadTempPath,
+          throwawaysRoot: path.join(deadTempPath, 'throwaways'),
+          desktopJunctionPath: customDesktopJunction,
+          defaultTtlDays: 3,
+        }),
+        'utf8'
+      );
+
+      const fixReport = await fixDoctorIssues({
+        configDir: corruptConfigDir,
+      });
+
+      expect(fixReport.repairActions.some((a) => a.includes('Reset corrupted temporary projectsRoot'))).toBe(true);
+
+      const healedConfig = JSON.parse(fs.readFileSync(path.join(corruptConfigDir, 'config.json'), 'utf8'));
+      expect(healedConfig.projectsRoot).toBe(path.join(os.homedir(), 'projects'));
     });
   });
 

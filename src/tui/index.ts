@@ -8,6 +8,7 @@ import {
   getConfig,
   ensureConfigDirs,
   getTemplatesDir,
+  normalizeInputPath,
   DEFAULT_AGENTS_TEMPLATE_NAME,
 } from '../config/index.js';
 import { emitIpcToken } from '../ipc/index.js';
@@ -748,6 +749,11 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<'exit' | v
     placeholder: 'C:\\Users\\User\\Desktop\\legacy-app',
     validate(val) {
       if (!val || val.trim().length === 0) return 'Folder path cannot be empty';
+      try {
+        normalizeInputPath(val);
+      } catch (err: unknown) {
+        return err instanceof Error ? err.message : 'Invalid folder path';
+      }
     },
   });
 
@@ -756,11 +762,13 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<'exit' | v
     return;
   }
 
+  const cleanPath = normalizeInputPath(folderPath);
+
   const s = p.spinner();
-  s.start(`Adopting folder "${folderPath}" into canonical workspace...`);
+  s.start(`Adopting folder "${cleanPath}" into canonical workspace...`);
 
   try {
-    const result = await adoptProject(folderPath, {
+    const result = await adoptProject(cleanPath, {
       configDir: options?.configDir,
     });
     s.stop(`Successfully adopted "${result.name}".`);

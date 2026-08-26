@@ -11,6 +11,7 @@ import {
   getTemplatesDir,
   getConfigFile,
   getIpcFile,
+  normalizeInputPath,
   DEFAULT_AGENTS_TEMPLATE,
   DEFAULT_GITIGNORE_TEMPLATE,
 } from '../src/config/index.js';
@@ -247,6 +248,61 @@ describe('Configuration Manager', () => {
       expect(() => {
         updateConfig({ desktopJunctionPath: null as unknown as string });
       }).toThrow('desktopJunctionPath');
+    });
+  });
+
+  describe('normalizeInputPath() boundary normalizer', () => {
+    it('strips enclosing double quotes from Windows paths', () => {
+      const input = '"C:\\Users\\Manit\\Desktop\\sandcastle"';
+      const expected = path.normalize('C:\\Users\\Manit\\Desktop\\sandcastle');
+      expect(normalizeInputPath(input)).toBe(expected);
+    });
+
+    it('strips enclosing single quotes from paths', () => {
+      const input = "'C:\\Users\\Manit\\Desktop\\sandcastle'";
+      const expected = path.normalize('C:\\Users\\Manit\\Desktop\\sandcastle');
+      expect(normalizeInputPath(input)).toBe(expected);
+    });
+
+    it('trims whitespace surrounding quoted and unquoted paths', () => {
+      const input = '   "C:\\Users\\Manit\\Desktop\\sandcastle"   ';
+      const expected = path.normalize('C:\\Users\\Manit\\Desktop\\sandcastle');
+      expect(normalizeInputPath(input)).toBe(expected);
+    });
+
+    it('handles paths with spaces inside quotes', () => {
+      const input = '"C:\\Users\\Manit\\My Projects\\Special App"';
+      const expected = path.normalize('C:\\Users\\Manit\\My Projects\\Special App');
+      expect(normalizeInputPath(input)).toBe(expected);
+    });
+
+    it('strips trailing slashes from paths unless it is root', () => {
+      const input = '"C:\\Users\\Manit\\Desktop\\sandcastle\\"';
+      const expected = path.normalize('C:\\Users\\Manit\\Desktop\\sandcastle');
+      expect(normalizeInputPath(input)).toBe(expected);
+    });
+
+    it('strips Windows long path prefix \\\\?\\', () => {
+      const input = '\\\\?\\C:\\Users\\Manit\\Desktop\\sandcastle';
+      const expected = path.normalize('C:\\Users\\Manit\\Desktop\\sandcastle');
+      expect(normalizeInputPath(input)).toBe(expected);
+    });
+
+    it('resolves relative paths against process.cwd() or custom base', () => {
+      const relative = './my-relative-project';
+      const resolved = normalizeInputPath(relative, tempDir);
+      expect(resolved).toBe(path.resolve(tempDir, 'my-relative-project'));
+    });
+
+    it('throws error when input is empty or whitespace only', () => {
+      expect(() => normalizeInputPath('')).toThrow('path cannot be empty');
+      expect(() => normalizeInputPath('   ')).toThrow('path cannot be empty');
+      expect(() => normalizeInputPath('""')).toThrow('path cannot be empty');
+      expect(() => normalizeInputPath("''")).toThrow('path cannot be empty');
+    });
+
+    it('throws error when input is not a string', () => {
+      expect(() => normalizeInputPath(null as unknown as string)).toThrow('path must be a string');
     });
   });
 });

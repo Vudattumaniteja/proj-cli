@@ -131,4 +131,33 @@ describe('Project Adoption Engine (adoptProject)', () => {
     expect(result.path).toBe(path.join(projectsDir, 'renamed-adopted-proj'));
     expect(fs.existsSync(result.path)).toBe(true);
   });
+
+  it('safely adopts folder when path is passed with surrounding quotes and extra whitespace', async () => {
+    const sourceFolder = path.join(desktopDir, 'quoted-sandcastle');
+    fs.mkdirSync(sourceFolder);
+    fs.writeFileSync(path.join(sourceFolder, 'index.js'), 'console.log("sandcastle");');
+
+    // Simulate user copy-pasting path with double quotes and whitespace into the prompt
+    const quotedInput = `  "${sourceFolder}"  `;
+    const result = await adoptProject(quotedInput);
+
+    expect(result.name).toBe('quoted-sandcastle');
+    expect(result.path).toBe(path.join(projectsDir, 'quoted-sandcastle'));
+    expect(fs.existsSync(result.path)).toBe(true);
+    expect(fs.existsSync(sourceFolder)).toBe(false);
+  });
+
+  it('safely adopts folder when path is passed with single quotes', async () => {
+    const sourceFolder = path.join(desktopDir, 'single-quoted-sandcastle');
+    fs.mkdirSync(sourceFolder);
+    fs.writeFileSync(path.join(sourceFolder, 'index.js'), 'console.log("single");');
+
+    const singleQuotedInput = `'${sourceFolder}'`;
+    const result = await adoptProject(singleQuotedInput);
+
+    expect(result.name).toBe('single-quoted-sandcastle');
+    expect(result.path).toBe(path.join(projectsDir, 'single-quoted-sandcastle'));
+    expect(fs.existsSync(result.path)).toBe(true);
+    expect(fs.existsSync(sourceFolder)).toBe(false);
+  });
 });

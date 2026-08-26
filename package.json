@@ -13,6 +13,8 @@
   ],
   "scripts": {
     "build": "tsup",
+    "dev": "tsup --watch",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

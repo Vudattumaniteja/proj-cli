@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {
+  PROJ_DIR_NAME,
   DEFAULT_AGENTS_TEMPLATE,
   DEFAULT_GITIGNORE_TEMPLATE,
   DEFAULT_AGENTS_TEMPLATE_NAME,
@@ -80,6 +81,31 @@ function validateConfig(config: Partial<ProjConfig>): void {
 }
 
 /**
+ * Asserts test environment isolation to prevent test suites from modifying live host paths.
+ */
+export function assertTestIsolation(configDirOption?: string): void {
+  const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+  if (!isTest) {
+    return;
+  }
+
+  if (configDirOption && configDirOption.trim() !== '') {
+    return;
+  }
+
+  if (process.env.PROJ_CONFIG_DIR && process.env.PROJ_CONFIG_DIR.trim() !== '') {
+    const liveHostConfig = path.join(os.homedir(), PROJ_DIR_NAME);
+    if (path.resolve(process.env.PROJ_CONFIG_DIR) !== path.resolve(liveHostConfig)) {
+      return;
+    }
+  }
+
+  throw new Error(
+    'Test isolation violation: Cannot write to live host config (~/.proj) during tests. Provide configDir or set process.env.PROJ_CONFIG_DIR.'
+  );
+}
+
+/**
  * Ensures ~/.proj and ~/.proj/templates directories exist,
  * and copies default AGENTS.md and gitignore.default templates if missing.
  * Also creates default config.json if not present.
@@ -89,6 +115,7 @@ export function ensureConfigDirs(options?: ConfigOptions): {
   templatesDir: string;
   configFile: string;
 } {
+  assertTestIsolation(options?.configDir);
   const configDir = getConfigDir(options?.configDir);
   const templatesDir = getTemplatesDir(options?.configDir);
   const configFile = getConfigFile(options?.configDir);
@@ -181,6 +208,7 @@ export function updateConfig(
   updates: Partial<ProjConfig>,
   options?: ConfigOptions
 ): ProjConfig {
+  assertTestIsolation(options?.configDir);
   validateConfig(updates);
 
   const current = getConfig(options);

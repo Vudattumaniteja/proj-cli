@@ -5,6 +5,7 @@ import { execa, execaSync } from 'execa';
 import pc from 'picocolors';
 import {
   getConfig,
+  updateConfig,
   getDefaultConfig,
   getConfigDir,
   getConfigFile,
@@ -281,8 +282,22 @@ export function repairJunction(
       }
     } else if (stat.isDirectory()) {
       const entries = fs.readdirSync(resolvedLink);
-      if (entries.length === 0) {
-        fs.rmdirSync(resolvedLink);
+      const ignorableFiles = new Set(['desktop.ini', 'thumbs.db', '.ds_store']);
+      const nonIgnorableEntries = entries.filter((e) => !ignorableFiles.has(e.toLowerCase()));
+
+      if (nonIgnorableEntries.length === 0) {
+        for (const entry of entries) {
+          try {
+            fs.unlinkSync(path.join(resolvedLink, entry));
+          } catch {
+            // Ignore failure
+          }
+        }
+        try {
+          fs.rmdirSync(resolvedLink);
+        } catch {
+          fs.rmSync(resolvedLink, { recursive: true, force: true });
+        }
       } else {
         return {
           repaired: false,
@@ -634,12 +649,37 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
 
   const config = getConfig(options);
   const configDir = getConfigDir(options?.configDir);
-  const projectsRoot = options?.projectsRoot || config.projectsRoot;
-  const throwawaysRoot = options?.throwawaysRoot || config.throwawaysRoot;
+  let projectsRoot = options?.projectsRoot || config.projectsRoot;
+  let throwawaysRoot = options?.throwawaysRoot || config.throwawaysRoot;
   const desktopJunctionPath =
     options?.desktopJunctionPath ||
     config.desktopJunctionPath ||
     path.join(os.homedir(), 'Desktop', 'Projects');
+
+  // Detect and heal corrupted/temporary projectsRoot in config (e.g. leftover from test runs)
+  const isConfigTempOrMissing =
+    !options?.projectsRoot &&
+    typeof config.projectsRoot === 'string' &&
+    !fs.existsSync(config.projectsRoot) &&
+    (config.projectsRoot.toLowerCase().includes(os.tmpdir().toLowerCase()) ||
+      /[\/\\]temp[\/\\]|[\/\\]tmp[\/\\]/i.test(config.projectsRoot));
+
+  if (isConfigTempOrMissing) {
+    const defaultRoot = path.join(os.homedir(), 'projects');
+    const defaultThrowaways = path.join(defaultRoot, 'throwaways');
+    updateConfig(
+      {
+        projectsRoot: defaultRoot,
+        throwawaysRoot: defaultThrowaways,
+      },
+      { configDir }
+    );
+    projectsRoot = defaultRoot;
+    throwawaysRoot = defaultThrowaways;
+    repairActions.push(
+      `Reset corrupted temporary projectsRoot in config to default: ${defaultRoot}`
+    );
+  }
 
   // 1. Repair config & templates
   const ensured = ensureConfigDirs({ configDir });
