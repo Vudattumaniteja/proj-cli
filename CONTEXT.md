@@ -14,6 +14,12 @@
 5. **Local Git Safety Engine**:
    - `proj checkpoint [msg]`: Creates commit with prefix `checkpoint: <message>`.
    - `proj undo [hash]`: Pre-creates safety stash `proj-safety-stash-<timestamp>` before resetting to prevent loss of uncommitted work.
+6. **Project Deletion Engine**:
+   - **Local Deletion**: Removes project directory from workspace, verifying dirty working tree state and requiring explicit confirmation.
+   - **Cloud Deletion**: Deletes remote GitHub repository using GitHub CLI (`gh repo delete --yes`), handling `delete_repo` OAuth scope authorization when required.
+7. **Cloud GitHub Publishing Engine**:
+   - Converts local project into a private GitHub repository matching the folder name using `gh repo create`.
+   - Automatically takes a safety checkpoint commit before initial push if working tree contains uncommitted files.
 
 ## Technology Stack
 - **Runtime**: Node.js >= 20 (ES2022 / NodeNext ESM)

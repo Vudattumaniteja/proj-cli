@@ -15,3 +15,10 @@ export interface PowerShellWrapperOptions {
   binName?: string;
   configDir?: string;
 }
+
+export interface CmdWrapperOptions {
+  binName?: string;
+  configDir?: string;
+  isNpmShim?: boolean;
+  targetJs?: string;
+}

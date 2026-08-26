@@ -13,7 +13,7 @@ import {
   DEFAULT_AGENTS_TEMPLATE_NAME,
   DEFAULT_GITIGNORE_TEMPLATE_NAME,
 } from '../config/index.js';
-import { writePowerShellWrapper } from '../ipc/index.js';
+import { writePowerShellWrapper, writeCmdWrapper } from '../ipc/index.js';
 
 export const MIN_GIT_VERSION = '2.20.0';
 
@@ -568,15 +568,36 @@ export async function runDoctor(options?: DoctorOptions): Promise<DoctorReport> 
   }
 
   // Check 5: Shell IPC bridge readiness
-  const wrapperScript = path.join(configDir, 'proj.ps1');
-  const wrapperExists = fs.existsSync(wrapperScript);
+  const psWrapper = path.join(configDir, 'proj.ps1');
+  const cmdWrapper = path.join(configDir, 'proj.cmd');
+  const psExists = fs.existsSync(psWrapper);
+  const cmdExists = fs.existsSync(cmdWrapper);
 
-  if (!wrapperExists) {
+  const missingIpc: string[] = [];
+  if (!psExists) missingIpc.push(`PowerShell wrapper (${psWrapper})`);
+  if (!cmdExists) missingIpc.push(`CMD wrapper (${cmdWrapper})`);
+
+  // Check npm global shim on Windows if present
+  if (process.platform === 'win32' && process.env.APPDATA) {
+    const npmShimPath = path.join(process.env.APPDATA, 'npm', 'proj.cmd');
+    if (fs.existsSync(npmShimPath)) {
+      try {
+        const shimContent = fs.readFileSync(npmShimPath, 'utf8');
+        if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+          missingIpc.push(`npm global shim (${npmShimPath}) outdated IPC interceptor`);
+        }
+      } catch {
+        // Ignore read error
+      }
+    }
+  }
+
+  if (missingIpc.length > 0) {
     checks.push({
       id: 'ipc',
       name: 'Shell IPC bridge readiness',
       status: 'warning',
-      message: `PowerShell wrapper script is missing (${wrapperScript})`,
+      message: `Shell IPC bridge issues: ${missingIpc.join(', ')}`,
       fixable: true,
     });
   } else {
@@ -584,7 +605,7 @@ export async function runDoctor(options?: DoctorOptions): Promise<DoctorReport> 
       id: 'ipc',
       name: 'Shell IPC bridge readiness',
       status: 'ok',
-      message: `Shell IPC bridge ready (${wrapperScript})`,
+      message: `Shell IPC bridge ready (PowerShell & CMD wrappers intact)`,
       fixable: false,
     });
   }
@@ -653,11 +674,30 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
     );
   }
 
-  // 4. Repair Shell IPC bridge wrapper
-  const wrapperScript = path.join(configDir, 'proj.ps1');
-  if (!fs.existsSync(wrapperScript)) {
-    writePowerShellWrapper(wrapperScript, { configDir });
-    repairActions.push(`Generated PowerShell IPC bridge wrapper script: ${wrapperScript}`);
+  // 4. Repair Shell IPC bridge wrappers (PowerShell & CMD)
+  const psWrapper = path.join(configDir, 'proj.ps1');
+  if (!fs.existsSync(psWrapper)) {
+    writePowerShellWrapper(psWrapper, { configDir });
+    repairActions.push(`Generated PowerShell IPC bridge wrapper script: ${psWrapper}`);
+  }
+
+  const cmdWrapper = path.join(configDir, 'proj.cmd');
+  writeCmdWrapper(cmdWrapper, { configDir });
+  repairActions.push(`Generated CMD IPC bridge wrapper script: ${cmdWrapper}`);
+
+  if (process.platform === 'win32' && process.env.APPDATA) {
+    const npmShimPath = path.join(process.env.APPDATA, 'npm', 'proj.cmd');
+    if (fs.existsSync(npmShimPath)) {
+      try {
+        const shimContent = fs.readFileSync(npmShimPath, 'utf8');
+        if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+          writeCmdWrapper(npmShimPath, { isNpmShim: true });
+          repairActions.push(`Updated npm global shim with IPC interceptor: ${npmShimPath}`);
+        }
+      } catch {
+        // Ignore read/write error
+      }
+    }
   }
 
   const fixedReport = await runDoctor(options);

@@ -9,6 +9,7 @@ import {
   graduateThrowaway,
   extendThrowaway,
   deleteThrowaway,
+  isThrowawayExpired,
   type ThrowawayRecord,
 } from '../src/engine/throwaway.js';
 import { listProjects } from '../src/engine/discovery.js';
@@ -44,6 +45,41 @@ describe('Throwaway Scratchpad Lifecycle Engine', () => {
     if (fs.existsSync(tempRoot)) {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  describe('isThrowawayExpired()', () => {
+    it('returns true when current/reference time is past expiresAt', () => {
+      const record: ThrowawayRecord = {
+        name: 'test-scratch',
+        path: '/dummy/path',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        expiresAt: '2026-08-04T00:00:00.000Z',
+        ttlDays: 3,
+        template: 'minimal',
+      };
+
+      expect(isThrowawayExpired(record, new Date('2026-08-05T00:00:00.000Z'))).toBe(true);
+      expect(isThrowawayExpired(record, '2026-08-04T00:00:01.000Z')).toBe(true);
+    });
+
+    it('returns false when current/reference time is before expiresAt', () => {
+      const record: ThrowawayRecord = {
+        name: 'test-scratch',
+        path: '/dummy/path',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        expiresAt: '2026-08-04T00:00:00.000Z',
+        ttlDays: 3,
+        template: 'minimal',
+      };
+
+      expect(isThrowawayExpired(record, new Date('2026-08-02T00:00:00.000Z'))).toBe(false);
+      expect(isThrowawayExpired(record, '2026-08-03T23:59:59.000Z')).toBe(false);
+    });
+
+    it('returns false when record or expiresAt is missing', () => {
+      expect(isThrowawayExpired(undefined as unknown as ThrowawayRecord)).toBe(false);
+      expect(isThrowawayExpired({} as unknown as ThrowawayRecord)).toBe(false);
+    });
   });
 
   describe('createThrowaway()', () => {
@@ -196,7 +232,11 @@ describe('Throwaway Scratchpad Lifecycle Engine', () => {
         now: created,
       });
 
-      const updated = extendThrowaway('extend-target', 4, { configDir, throwawaysRoot: throwawaysDir });
+      const updated = extendThrowaway('extend-target', 4, {
+        configDir,
+        throwawaysRoot: throwawaysDir,
+        now: new Date('2026-08-20T12:00:00.000Z'),
+      });
       expect(updated.name).toBe('extend-target');
       expect(updated.ttlDays).toBe(7);
       expect(updated.expiresAt).toBe('2026-08-26T12:00:00.000Z');
@@ -204,6 +244,26 @@ describe('Throwaway Scratchpad Lifecycle Engine', () => {
       const config = getConfig({ configDir });
       expect(config.throwaways!['extend-target'].expiresAt).toBe('2026-08-26T12:00:00.000Z');
       expect(config.throwaways!['extend-target'].ttlDays).toBe(7);
+    });
+
+    it('guarantees new expiration date is in the future when extending an already-expired scratchpad', async () => {
+      const created = new Date('2026-08-01T12:00:00.000Z');
+      await createThrowaway('expired-target', 2, 'minimal', {
+        configDir,
+        throwawaysRoot: throwawaysDir,
+        now: created,
+      });
+
+      const extendNow = new Date('2026-08-10T12:00:00.000Z');
+      const updated = extendThrowaway('expired-target', 3, {
+        configDir,
+        throwawaysRoot: throwawaysDir,
+        now: extendNow,
+      });
+
+      expect(updated.name).toBe('expired-target');
+      expect(updated.ttlDays).toBe(5);
+      expect(updated.expiresAt).toBe('2026-08-13T12:00:00.000Z');
     });
 
     it('rejects extension for non-existent throwaways or invalid days', async () => {
@@ -330,6 +390,129 @@ describe('Throwaway Scratchpad Lifecycle Engine', () => {
           throwawaysRoot: throwawaysDir,
         })
       ).rejects.toThrow(/already exists/i);
+    });
+  });
+
+  describe('Corrupted/Orphan Throwaway Handling & Key Healing', () => {
+    it('checkExpiredThrowaways() identifies expired scratchpads with mismatched keys (e.g. key "0")', () => {
+      updateConfig(
+        {
+          throwaways: {
+            '0': {
+              name: 'orphaned-spike',
+              path: path.join(throwawaysDir, 'orphaned-spike'),
+              createdAt: '2026-08-01T00:00:00.000Z',
+              expiresAt: '2026-08-04T00:00:00.000Z',
+              ttlDays: 3,
+              template: 'minimal',
+            },
+          },
+        },
+        { configDir }
+      );
+
+      const expired = checkExpiredThrowaways({
+        configDir,
+        now: new Date('2026-08-10T00:00:00.000Z'),
+      });
+
+      expect(expired).toHaveLength(1);
+      expect(expired[0].name).toBe('orphaned-spike');
+    });
+
+    it('extendThrowaway() finds entry by record.name when key is mismatched (e.g. "0") and heals the key', () => {
+      updateConfig(
+        {
+          throwaways: {
+            '0': {
+              name: 'mismatched-spike',
+              path: path.join(throwawaysDir, 'mismatched-spike'),
+              createdAt: '2026-08-01T00:00:00.000Z',
+              expiresAt: '2026-08-04T00:00:00.000Z',
+              ttlDays: 3,
+              template: 'minimal',
+            },
+          },
+        },
+        { configDir }
+      );
+
+      const extended = extendThrowaway('mismatched-spike', 5, {
+        configDir,
+        now: new Date('2026-08-05T00:00:00.000Z'),
+      });
+
+      expect(extended.name).toBe('mismatched-spike');
+      expect(extended.ttlDays).toBe(8);
+
+      const config = getConfig({ configDir });
+      expect(config.throwaways?.['0']).toBeUndefined();
+      expect(config.throwaways?.['mismatched-spike']).toBeDefined();
+      expect(config.throwaways?.['mismatched-spike'].ttlDays).toBe(8);
+    });
+
+    it('deleteThrowaway() purges mismatched key entry and deletes even if folder is missing on disk', () => {
+      updateConfig(
+        {
+          throwaways: {
+            '0': {
+              name: 'ghost-spike',
+              path: path.join(throwawaysDir, 'ghost-spike'),
+              createdAt: '2026-08-01T00:00:00.000Z',
+              expiresAt: '2026-08-04T00:00:00.000Z',
+              ttlDays: 3,
+              template: 'minimal',
+            },
+          },
+        },
+        { configDir }
+      );
+
+      // Verify ghost-spike folder does not exist on disk
+      expect(fs.existsSync(path.join(throwawaysDir, 'ghost-spike'))).toBe(false);
+
+      const result = deleteThrowaway('ghost-spike', { configDir, throwawaysRoot: throwawaysDir });
+      expect(result.deleted).toBe(true);
+      expect(result.name).toBe('ghost-spike');
+
+      const config = getConfig({ configDir });
+      expect(config.throwaways?.['0']).toBeUndefined();
+      expect(config.throwaways?.['ghost-spike']).toBeUndefined();
+    });
+
+    it('graduateThrowaway() successfully purges mismatched key entry upon graduation', async () => {
+      const spikePath = path.join(throwawaysDir, 'grad-spike');
+      fs.mkdirSync(spikePath, { recursive: true });
+      fs.writeFileSync(path.join(spikePath, 'README.md'), '# Grad Spike', 'utf8');
+
+      updateConfig(
+        {
+          throwaways: {
+            '0': {
+              name: 'grad-spike',
+              path: spikePath,
+              createdAt: '2026-08-01T00:00:00.000Z',
+              expiresAt: '2026-08-04T00:00:00.000Z',
+              ttlDays: 3,
+              template: 'minimal',
+            },
+          },
+        },
+        { configDir }
+      );
+
+      const result = await graduateThrowaway('grad-spike', {
+        configDir,
+        projectsRoot: projectsDir,
+        throwawaysRoot: throwawaysDir,
+      });
+
+      expect(result.name).toBe('grad-spike');
+      expect(fs.existsSync(path.join(projectsDir, 'grad-spike'))).toBe(true);
+
+      const config = getConfig({ configDir });
+      expect(config.throwaways?.['0']).toBeUndefined();
+      expect(config.throwaways?.['grad-spike']).toBeUndefined();
     });
   });
 });

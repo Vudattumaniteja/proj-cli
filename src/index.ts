@@ -58,6 +58,22 @@ export function createProgram(): Command {
     .option('-i, --interactive', 'Launch interactive Clack TUI dashboard');
 
   program
+    .command('init')
+    .description('Initialize workspace directories, config, PowerShell IPC bridge, and Desktop Junction')
+    .action(async () => {
+      try {
+        const fixReport = await fixDoctorIssues();
+        process.stdout.write(formatDoctorFixReport(fixReport) + '\n');
+        if (fixReport.fixedReport.errorCount > 0) {
+          process.exitCode = 1;
+        }
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
     .command('new [name]')
     .alias('create')
     .description('Scaffold a new project repository with agent guardrails and Git snapshot')
@@ -85,8 +101,8 @@ export function createProgram(): Command {
           parentDir: config.projectsRoot,
         });
         process.stdout.write(`Successfully created project "${result.name}" at ${result.path}\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -140,8 +156,8 @@ export function createProgram(): Command {
           process.stdout.write(
             `Successfully created throwaway scratchpad "${result.name}" at ${result.path} (expires: ${result.expiresAt})\n`
           );
-        } catch (err: any) {
-          process.stderr.write(`Error: ${err.message}\n`);
+        } catch (err: unknown) {
+          process.stderr.write(`Error: ${(err as Error).message}\n`);
           process.exitCode = 1;
         }
       }
@@ -156,8 +172,8 @@ export function createProgram(): Command {
         process.stdout.write(
           `Successfully graduated throwaway "${result.name}" to ${result.path}\n`
         );
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -172,8 +188,8 @@ export function createProgram(): Command {
         process.stdout.write(
           `Successfully extended throwaway "${result.name}" by ${days} days (new expiration: ${result.expiresAt})\n`
         );
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -187,19 +203,33 @@ export function createProgram(): Command {
       try {
         const result = deleteThrowaway(name);
         process.stdout.write(`Successfully deleted throwaway "${result.name}"\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
 
   program
     .command('expired')
-    .description('List expired throwaway scratchpads')
+    .alias('prune-expired')
+    .description('List or batch delete expired throwaway scratchpads')
+    .option('-d, --delete', 'Delete all expired throwaway scratchpads')
     .option('--json', 'Output expired list in JSON format')
-    .action((options: { json?: boolean }) => {
+    .action(async (options: { delete?: boolean; json?: boolean }) => {
       try {
         const expired = checkExpiredThrowaways();
+        if (options.delete) {
+          if (expired.length === 0) {
+            process.stdout.write('No expired throwaways found.\n');
+            return;
+          }
+          for (const exp of expired) {
+            const result = deleteThrowaway(exp.name);
+            process.stdout.write(`Successfully deleted throwaway "${result.name}"\n`);
+          }
+          return;
+        }
+
         if (options.json) {
           process.stdout.write(JSON.stringify(expired, null, 2) + '\n');
         } else if (expired.length === 0) {
@@ -210,8 +240,8 @@ export function createProgram(): Command {
             process.stdout.write(`- ${exp.name} (expired at ${exp.expiresAt}) -> ${exp.path}\n`);
           }
         }
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -227,8 +257,8 @@ export function createProgram(): Command {
         process.stdout.write(
           `Successfully created checkpoint ${result.shortHash} ("${result.message}")\n`
         );
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -251,8 +281,8 @@ export function createProgram(): Command {
         } else {
           process.stdout.write(formatCheckpointsTable(checkpoints) + '\n');
         }
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -274,8 +304,8 @@ export function createProgram(): Command {
 
         const result = await rollbackCheckpoint(process.cwd(), target);
         process.stdout.write(formatRollbackSummary(result) + '\n');
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -288,8 +318,8 @@ export function createProgram(): Command {
       try {
         const result = await adoptProject(folderPath, { name: options.name });
         process.stdout.write(`Successfully adopted project "${result.name}" at ${result.path}\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -310,14 +340,54 @@ export function createProgram(): Command {
         try {
           const content = fs.readFileSync(agentsPath, 'utf8');
           process.stdout.write(content + '\n');
-        } catch (err: any) {
-          process.stderr.write(`Error reading master rules: ${err.message}\n`);
+        } catch (err: unknown) {
+          process.stderr.write(`Error reading master rules: ${(err as Error).message}\n`);
           process.exitCode = 1;
         }
       } else {
         process.stderr.write(
           `Error: Unknown rules action "${action}". Must be "view" or "edit".\n`
         );
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('cd [name]')
+    .alias('jump')
+    .description('Emit IPC token to navigate shell to target workspace project, throwaway, or workspace root')
+    .action(async (name?: string) => {
+      try {
+        const config = getConfig();
+        if (!name) {
+          emitIpcToken('cd', config.projectsRoot);
+          process.stdout.write(`Jumping to workspace root at ${config.projectsRoot}\n`);
+          return;
+        }
+
+        const candidate1 = path.join(config.projectsRoot, name);
+        const candidate2 = path.join(config.throwawaysRoot, name);
+        const candidate3 = path.resolve(name);
+
+        let targetPath: string | null = null;
+        if (fs.existsSync(candidate1)) {
+          targetPath = candidate1;
+        } else if (fs.existsSync(candidate2)) {
+          targetPath = candidate2;
+        } else if (fs.existsSync(candidate3)) {
+          targetPath = candidate3;
+        }
+
+        if (!targetPath) {
+          process.stderr.write(`Error: Project "${name}" not found in workspace\n`);
+          process.exitCode = 1;
+          return;
+        }
+
+        emitIpcToken('cd', targetPath);
+        process.stdout.write(`Jumping to project "${name}" at ${targetPath}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -356,8 +426,8 @@ export function createProgram(): Command {
 
         emitIpcToken('code', targetPath);
         process.stdout.write(`Opening project "${name}" in VS Code at ${targetPath}\n`);
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -390,8 +460,8 @@ export function createProgram(): Command {
             process.exitCode = 1;
           }
         }
-      } catch (err: any) {
-        process.stderr.write(`Error: ${err.message}\n`);
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
       }
     });
@@ -417,10 +487,19 @@ const isDirectExecution = (): boolean => {
   if (!process.argv[1]) return false;
   try {
     const scriptPath = fileURLToPath(import.meta.url);
+    const normalizedArgv = path.resolve(process.argv[1]);
+    const normalizedScript = path.resolve(scriptPath);
+    const normalizedArgvSlash = process.argv[1].replace(/\\/g, '/');
     return (
-      process.argv[1] === scriptPath ||
-      process.argv[1].endsWith('dist/index.js') ||
-      process.argv[1].endsWith('proj')
+      normalizedArgv === normalizedScript ||
+      (fs.existsSync(normalizedArgv) &&
+        fs.existsSync(normalizedScript) &&
+        fs.realpathSync(normalizedArgv) === fs.realpathSync(normalizedScript)) ||
+      normalizedArgvSlash.endsWith('dist/index.js') ||
+      normalizedArgvSlash.endsWith('/proj') ||
+      normalizedArgvSlash.endsWith('/proj.cmd') ||
+      normalizedArgvSlash.endsWith('/proj.ps1') ||
+      normalizedArgvSlash.endsWith('bin/proj.js')
     );
   } catch {
     return false;

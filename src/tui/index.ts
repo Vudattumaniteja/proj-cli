@@ -13,6 +13,10 @@ import {
   listProjects,
   scaffoldProject,
   createThrowaway,
+  checkExpiredThrowaways,
+  extendThrowaway,
+  deleteThrowaway,
+  graduateThrowaway,
   createCheckpoint,
   listCheckpoints,
   rollbackCheckpoint,
@@ -22,12 +26,15 @@ import {
   formatDoctorFixReport,
   SUPPORTED_TEMPLATES,
   type ProjectTemplate,
+  type ProjectInfo,
+  type CheckpointInfo,
 } from '../engine/index.js';
 import { adoptProject } from '../engine/adopt.js';
 
 export interface TuiOptions {
   configDir?: string;
   cwd?: string;
+  now?: Date | string | number;
 }
 
 /**
@@ -35,7 +42,7 @@ export interface TuiOptions {
  */
 export async function interactiveNewProject(
   options?: TuiOptions & { initialName?: string }
-): Promise<void> {
+): Promise<'exit' | void> {
   let name = options?.initialName;
   if (!name) {
     const enteredName = await p.text({
@@ -108,14 +115,16 @@ export async function interactiveNewProject(
       if (nextAction === 'code') {
         emitIpcToken('code', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        return 'exit';
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
+        return 'exit';
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     s.stop('Failed to scaffold project.');
-    p.log.error(err.message);
+    p.log.error(err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -124,7 +133,7 @@ export async function interactiveNewProject(
  */
 export async function interactiveThrowaway(
   options?: TuiOptions & { initialName?: string }
-): Promise<void> {
+): Promise<'exit' | void> {
   let name = options?.initialName;
   if (!name) {
     const enteredName = await p.text({
@@ -204,14 +213,16 @@ export async function interactiveThrowaway(
       if (nextAction === 'code') {
         emitIpcToken('code', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        return 'exit';
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
+        return 'exit';
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     s.stop('Failed to create throwaway scratchpad.');
-    p.log.error(err.message);
+    p.log.error(err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -225,13 +236,13 @@ export async function interactiveRollback(
   const s = p.spinner();
   s.start('Inspecting recent milestone checkpoints...');
 
-  let checkpoints: any[] = [];
+  let checkpoints: CheckpointInfo[] = [];
   try {
     checkpoints = await listCheckpoints(repoPath, 15);
     s.stop(`Found ${checkpoints.length} milestone checkpoint(s).`);
-  } catch (err: any) {
+  } catch (err: unknown) {
     s.stop('Unable to inspect repository checkpoints.');
-    p.log.error(err.message);
+    p.log.error(err instanceof Error ? err.message : String(err));
     return;
   }
 
@@ -272,9 +283,9 @@ export async function interactiveRollback(
     const result = await rollbackCheckpoint(repoPath, selectedCommit as string);
     rollbackSpinner.stop('Rollback completed successfully.');
     p.note(result.summary, 'Rollback Summary');
-  } catch (err: any) {
+  } catch (err: unknown) {
     rollbackSpinner.stop('Rollback failed.');
-    p.log.error(err.message);
+    p.log.error(err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -286,15 +297,17 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   const s = p.spinner();
   s.start('Scanning workspace repositories & scratchpads...');
 
-  let projects: any[] = [];
+  let projects: ProjectInfo[] = [];
   try {
     projects = await listProjects(config.projectsRoot, {
       throwawaysRoot: config.throwawaysRoot,
+      configDir: options?.configDir,
+      now: options?.now,
     });
     s.stop(`Discovered ${projects.length} project(s).`);
-  } catch (err: any) {
+  } catch (err: unknown) {
     s.stop('Failed to scan workspace.');
-    p.log.error(err.message);
+    p.log.error(err instanceof Error ? err.message : String(err));
     return 'back';
   }
 
@@ -315,7 +328,12 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
         }`
       : pc.dim('non-git');
 
-    const throwawayBadge = proj.isThrowaway ? pc.magenta(' [throwaway]') : '';
+    let throwawayBadge = '';
+    if (proj.isThrowaway) {
+      throwawayBadge = proj.isExpired
+        ? pc.red(' [throwaway: EXPIRED]')
+        : pc.magenta(' [throwaway]');
+    }
     const badge = pc.dim(proj.templateBadge);
 
     return {
@@ -344,35 +362,58 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   if (!targetProject) return 'back';
 
   // Context Actions Menu for selected project
+  const actionOptions: Array<{ value: string; label: string; hint?: string }> = [
+    {
+      value: 'jump',
+      label: '🚀 Jump (cd)',
+      hint: `Navigate shell to ${targetProject.path}`,
+    },
+    {
+      value: 'code',
+      label: '💻 Open in VS Code',
+      hint: 'Emit IPC token to open in VS Code',
+    },
+    {
+      value: 'checkpoint',
+      label: '💾 Save Checkpoint',
+      hint: 'Create milestone save commit in this repository',
+    },
+    {
+      value: 'rollback',
+      label: '⏪ Rollback / Undo',
+      hint: 'Restore previous milestone with safety stash',
+    },
+  ];
+
+  if (targetProject.isThrowaway) {
+    actionOptions.push(
+      {
+        value: 'graduate',
+        label: '🎓 Graduate to Permanent Project',
+        hint: 'Promote to permanent project in canonical workspace',
+      },
+      {
+        value: 'extend',
+        label: '⏳ Extend TTL (+3 days)',
+        hint: 'Extend expiration by 3 days',
+      },
+      {
+        value: 'delete',
+        label: '🗑️ Delete Throwaway',
+        hint: 'Permanently remove from disk and config',
+      }
+    );
+  }
+
+  actionOptions.push({
+    value: 'back',
+    label: pc.dim('↩ Back to Project List'),
+    hint: '',
+  });
+
   const contextAction = await p.select({
     message: `Actions for "${targetProject.name}":`,
-    options: [
-      {
-        value: 'jump',
-        label: '🚀 Jump (cd)',
-        hint: `Navigate shell to ${targetProject.path}`,
-      },
-      {
-        value: 'code',
-        label: '💻 Open in VS Code',
-        hint: 'Emit IPC token to open in VS Code',
-      },
-      {
-        value: 'checkpoint',
-        label: '💾 Save Checkpoint',
-        hint: 'Create milestone save commit in this repository',
-      },
-      {
-        value: 'rollback',
-        label: '⏪ Rollback / Undo',
-        hint: 'Restore previous milestone with safety stash',
-      },
-      {
-        value: 'back',
-        label: '↩ Back to Project List',
-        hint: '',
-      },
-    ],
+    options: actionOptions,
   });
 
   if (p.isCancel(contextAction) || contextAction === 'back') {
@@ -410,8 +451,8 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
           `Created checkpoint ${cp.shortHash} ("${cp.message}")\nChanged files: ${cp.filesChanged}`,
           'Checkpoint Saved'
         );
-      } catch (err: any) {
-        p.log.error(err.message);
+      } catch (err: unknown) {
+        p.log.error(err instanceof Error ? err.message : String(err));
       }
     }
     return interactiveViewProjects(options);
@@ -419,6 +460,53 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
 
   if (contextAction === 'rollback') {
     await interactiveRollback(targetProject.path, options);
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'graduate') {
+    const gradSpinner = p.spinner();
+    gradSpinner.start(`Graduating throwaway "${targetProject.name}" to canonical workspace...`);
+    try {
+      const grad = await graduateThrowaway(targetProject.name, { configDir: options?.configDir });
+      gradSpinner.stop(`Successfully graduated "${grad.name}" to ${grad.path}.`);
+      p.note(
+        `Project Name: ${grad.name}\nCanonical Path: ${grad.path}\nGit Initialized: ${grad.isGit ? 'Yes' : 'No'}`,
+        'Throwaway Graduated'
+      );
+    } catch (err: unknown) {
+      gradSpinner.stop(`Failed to graduate "${targetProject.name}".`);
+      p.log.error(err instanceof Error ? err.message : String(err));
+    }
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'extend') {
+    const extSpinner = p.spinner();
+    extSpinner.start(`Extending throwaway "${targetProject.name}" (+3 days)...`);
+    try {
+      const updated = extendThrowaway(targetProject.name, 3, { configDir: options?.configDir });
+      extSpinner.stop(`Extended "${updated.name}" (new expiration: ${updated.expiresAt}).`);
+      p.note(
+        `New Expiration: ${updated.expiresAt}\nTotal TTL: ${updated.ttlDays} day(s)`,
+        'Throwaway Extended'
+      );
+    } catch (err: unknown) {
+      extSpinner.stop(`Failed to extend "${targetProject.name}".`);
+      p.log.error(err instanceof Error ? err.message : String(err));
+    }
+    return interactiveViewProjects(options);
+  }
+
+  if (contextAction === 'delete') {
+    const delSpinner = p.spinner();
+    delSpinner.start(`Deleting throwaway "${targetProject.name}"...`);
+    try {
+      deleteThrowaway(targetProject.name, { configDir: options?.configDir });
+      delSpinner.stop(`Deleted throwaway "${targetProject.name}".`);
+    } catch (err: unknown) {
+      delSpinner.stop(`Failed to delete "${targetProject.name}".`);
+      p.log.error(err instanceof Error ? err.message : String(err));
+    }
     return interactiveViewProjects(options);
   }
 
@@ -494,7 +582,7 @@ export async function interactiveDoctor(options?: TuiOptions): Promise<void> {
 /**
  * Interactive folder adoption wizard.
  */
-export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
+export async function interactiveAdopt(options?: TuiOptions): Promise<'exit' | void> {
   const folderPath = await p.text({
     message: 'Enter folder path to adopt into canonical workspace:',
     placeholder: 'C:\\Users\\User\\Desktop\\legacy-app',
@@ -535,14 +623,99 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
       if (nextAction === 'code') {
         emitIpcToken('code', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to open ${result.name} in VS Code.`);
+        return 'exit';
       } else if (nextAction === 'jump') {
         emitIpcToken('cd', result.path, { configDir: options?.configDir });
         p.outro(`Emitted IPC token to jump to ${result.path}.`);
+        return 'exit';
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     s.stop('Failed to adopt folder.');
-    p.log.error(err.message);
+    p.log.error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * Evaluates and prompts the user for handling expired throwaway scratchpads on startup.
+ */
+export async function handleExpiredThrowaways(options?: TuiOptions): Promise<void> {
+  const expired = checkExpiredThrowaways({
+    configDir: options?.configDir,
+    now: options?.now,
+  });
+
+  if (expired.length === 0) {
+    return;
+  }
+
+  p.note(
+    `Found ${expired.length} expired throwaway scratchpad(s):\n${expired.map((e) => `• ${e.name} (expired: ${e.expiresAt})`).join('\n')}`,
+    'Expired Scratchpads Detected'
+  );
+
+  for (const record of expired) {
+    const action = await p.select({
+      message: `Action for expired scratchpad "${record.name}":`,
+      options: [
+        {
+          value: 'delete',
+          label: '🗑️ Delete',
+          hint: 'Permanently remove from disk and config',
+        },
+        {
+          value: 'extend',
+          label: '⏳ Extend (+3d)',
+          hint: 'Extend expiration by 3 days',
+        },
+        {
+          value: 'graduate',
+          label: '🎓 Graduate',
+          hint: 'Migrate to permanent project & init Git tracking',
+        },
+        {
+          value: 'skip',
+          label: '⏭️ Skip',
+          hint: 'Keep unchanged and continue',
+        },
+      ],
+    });
+
+    if (p.isCancel(action) || action === 'skip') {
+      continue;
+    }
+
+    if (action === 'delete') {
+      const s = p.spinner();
+      s.start(`Deleting throwaway "${record.name}"...`);
+      try {
+        deleteThrowaway(record.name, { configDir: options?.configDir });
+        s.stop(`Deleted throwaway "${record.name}".`);
+      } catch (err: unknown) {
+        s.stop(`Failed to delete "${record.name}".`);
+        p.log.error(err instanceof Error ? err.message : String(err));
+      }
+    } else if (action === 'extend') {
+      const s = p.spinner();
+      s.start(`Extending throwaway "${record.name}" by 3 days...`);
+      try {
+        const updated = extendThrowaway(record.name, 3, { configDir: options?.configDir });
+        s.stop(`Extended "${record.name}" (new expiration: ${updated.expiresAt}).`);
+      } catch (err: unknown) {
+        s.stop(`Failed to extend "${record.name}".`);
+        p.log.error(err instanceof Error ? err.message : String(err));
+      }
+    } else if (action === 'graduate') {
+      const s = p.spinner();
+      s.start(`Graduating throwaway "${record.name}" to canonical workspace...`);
+      try {
+        const grad = await graduateThrowaway(record.name, { configDir: options?.configDir });
+        s.stop(`Graduated "${record.name}" to ${grad.path}.`);
+      } catch (err: unknown) {
+        s.stop(`Failed to graduate "${record.name}".`);
+        p.log.error(err instanceof Error ? err.message : String(err));
+      }
+    }
   }
 }
 
@@ -551,6 +724,8 @@ export async function interactiveAdopt(options?: TuiOptions): Promise<void> {
  */
 export async function launchInteractiveDashboard(options?: TuiOptions): Promise<void> {
   p.intro(pc.bgCyan(pc.black('  PROJ WORKSPACE DASHBOARD  ')));
+
+  await handleExpiredThrowaways(options);
 
   let running = true;
   while (running) {
@@ -619,12 +794,20 @@ export async function launchInteractiveDashboard(options?: TuiOptions): Promise<
         }
         break;
       }
-      case 'new':
-        await interactiveNewProject(options);
+      case 'new': {
+        const result = await interactiveNewProject(options);
+        if (result === 'exit') {
+          running = false;
+        }
         break;
-      case 'scratch':
-        await interactiveThrowaway(options);
+      }
+      case 'scratch': {
+        const result = await interactiveThrowaway(options);
+        if (result === 'exit') {
+          running = false;
+        }
         break;
+      }
       case 'checkpoint': {
         const msg = await p.text({
           message: 'Enter checkpoint message:',
@@ -638,8 +821,8 @@ export async function launchInteractiveDashboard(options?: TuiOptions): Promise<
           try {
             const cp = await createCheckpoint(options?.cwd || process.cwd(), msg);
             p.note(`Created checkpoint ${cp.shortHash}: "${cp.message}"`, 'Checkpoint Saved');
-          } catch (err: any) {
-            p.log.error(err.message);
+          } catch (err: unknown) {
+            p.log.error(err instanceof Error ? err.message : String(err));
           }
         }
         break;
@@ -647,9 +830,13 @@ export async function launchInteractiveDashboard(options?: TuiOptions): Promise<
       case 'undo':
         await interactiveRollback(options?.cwd || process.cwd(), options);
         break;
-      case 'adopt':
-        await interactiveAdopt(options);
+      case 'adopt': {
+        const result = await interactiveAdopt(options);
+        if (result === 'exit') {
+          running = false;
+        }
         break;
+      }
       case 'rules':
         await interactiveRules(options);
         break;
