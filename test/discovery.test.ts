@@ -391,6 +391,7 @@ describe('Project Discovery Engine', () => {
         templateBadge: '[typescript]',
         lastModified: new Date('2026-08-19T10:30:00Z'),
         isThrowaway: false,
+        hasRemote: false,
       },
       {
         name: 'temp-spike',
@@ -405,6 +406,7 @@ describe('Project Discovery Engine', () => {
         isThrowaway: true,
         isExpired: false,
         expiresAt: '2026-08-25T00:00:00.000Z',
+        hasRemote: false,
       },
       {
         name: 'expired-spike',
@@ -419,6 +421,7 @@ describe('Project Discovery Engine', () => {
         isThrowaway: true,
         isExpired: true,
         expiresAt: '2026-08-12T00:00:00.000Z',
+        hasRemote: false,
       },
       {
         name: 'plain-folder',
@@ -431,6 +434,7 @@ describe('Project Discovery Engine', () => {
         templateBadge: '[unknown]',
         lastModified: new Date('2026-08-19T09:00:00Z'),
         isThrowaway: false,
+        hasRemote: false,
       },
     ];
 
