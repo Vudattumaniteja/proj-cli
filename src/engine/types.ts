@@ -160,3 +160,17 @@ export interface PublishResult {
   isPrivate: boolean;
 }
 
+export interface DeleteProjectOptions {
+  cloud?: boolean;
+  force?: boolean;
+  configDir?: string;
+  projectsRoot?: string;
+  throwawaysRoot?: string;
+}
+
+export interface DeleteProjectResult {
+  name: string;
+  path: string;
+  cloudDeleted: boolean;
+}
+
