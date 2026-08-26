@@ -150,6 +150,25 @@ describe('Cloud GitHub Publishing Engine (publishProject)', () => {
 
       expect(fs.existsSync(path.join(projectDir, '.git'))).toBe(true);
     });
+
+    it('initializes Git and snapshots all files for a previously non-git directory', async () => {
+      const projectDir = path.join(canonicalProjects, 'new-clean-folder');
+      fs.mkdirSync(projectDir);
+      fs.writeFileSync(path.join(projectDir, 'index.ts'), 'export const a = 1;');
+
+      await publishProject('new-clean-folder', {
+        configDir,
+        projectsRoot: canonicalProjects,
+        throwawaysRoot,
+      });
+
+      const git = simpleGit(projectDir);
+      const log = await git.log();
+      expect(log.total).toBe(1);
+      expect(log.latest?.message).toBe('checkpoint: pre-publish snapshot');
+      const status = await git.status();
+      expect(status.files.length).toBe(0);
+    });
   });
 
   describe('Working Tree Dirty Snapshot Commit', () => {

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import { simpleGit } from 'simple-git';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -369,6 +370,51 @@ describe('proj CLI binary build and execution', () => {
     );
     expect(rmOut).toContain('Successfully deleted project "binary-rm-app"');
     expect(fs.existsSync(appToRm)).toBe(false);
+  });
+
+  it('executes dist/index.js delete refusing dirty tree and deletes when --force is supplied', async () => {
+    const dirtyApp = path.join(sampleProjectsDir, 'binary-dirty-app');
+    fs.mkdirSync(dirtyApp);
+    const git = simpleGit(dirtyApp);
+    await git.init();
+    await git.addConfig('user.name', 'integ-user', false, 'local');
+    await git.addConfig('user.email', 'integ@test.local', false, 'local');
+
+    fs.writeFileSync(path.join(dirtyApp, 'committed.txt'), 'committed');
+    await git.add('.');
+    await git.commit('checkpoint: init');
+
+    // Create uncommitted change
+    fs.writeFileSync(path.join(dirtyApp, 'dirty.txt'), 'uncommitted content');
+
+    // 1. Attempt delete without --force (should fail)
+    await expect(
+      execa('node', [distIndex, 'delete', 'binary-dirty-app'], {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      })
+    ).rejects.toThrow();
+
+    expect(fs.existsSync(dirtyApp)).toBe(true);
+
+    // 2. Delete with --force (should succeed)
+    const { stdout: forceOut } = await execa(
+      'node',
+      [distIndex, 'delete', 'binary-dirty-app', '--force'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(forceOut).toContain('Successfully deleted project "binary-dirty-app"');
+    expect(fs.existsSync(dirtyApp)).toBe(false);
+  });
+
+  it('executes dist/index.js publish --help and delete --help binary commands', async () => {
+    const { stdout: pubHelp } = await execa('node', [distIndex, 'publish', '--help']);
+    expect(pubHelp).toContain('publish');
+
+    const { stdout: delHelp } = await execa('node', [distIndex, 'delete', '--help']);
+    expect(delHelp).toContain('--cloud');
+    expect(delHelp).toContain('--force');
   });
 });
 

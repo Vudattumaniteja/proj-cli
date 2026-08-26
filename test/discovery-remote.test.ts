@@ -80,6 +80,31 @@ describe('Remote Origin Detection & Git Metadata', () => {
       });
     });
 
+    it('correctly handles URLs with trailing slashes', () => {
+      const httpsResult = parseGitHubRemote('https://github.com/owner/repo/');
+      expect(httpsResult).toEqual({
+        owner: 'owner',
+        repo: 'repo',
+        webUrl: 'https://github.com/owner/repo',
+      });
+
+      const sshResult = parseGitHubRemote('git@github.com:owner/repo.git/');
+      expect(sshResult).toEqual({
+        owner: 'owner',
+        repo: 'repo',
+        webUrl: 'https://github.com/owner/repo',
+      });
+    });
+
+    it('correctly parses git+https:// protocol URLs', () => {
+      const result = parseGitHubRemote('git+https://github.com/owner/repo.git');
+      expect(result).toEqual({
+        owner: 'owner',
+        repo: 'repo',
+        webUrl: 'https://github.com/owner/repo',
+      });
+    });
+
     it('returns undefined for non-GitHub remotes', () => {
       expect(parseGitHubRemote('https://gitlab.com/owner/repo.git')).toBeUndefined();
       expect(parseGitHubRemote('git@gitlab.com:owner/repo.git')).toBeUndefined();

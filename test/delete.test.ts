@@ -111,6 +111,39 @@ describe('Project Deletion Engine (deleteProject)', () => {
       expect(result.cloudDeleted).toBe(false);
       expect(fs.existsSync(externalDir)).toBe(false);
     });
+
+    it('locates and deletes a throwaway project and cleans up throwaways config registry', async () => {
+      const throwawaysDir = path.join(tempRoot, 'throwaways');
+      fs.mkdirSync(throwawaysDir, { recursive: true });
+      const scratchDir = path.join(throwawaysDir, 'scratch-spike');
+      fs.mkdirSync(scratchDir);
+      fs.writeFileSync(path.join(scratchDir, 'README.md'), '# Scratch Spike');
+
+      const configPath = path.join(configDir, 'config.json');
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      cfg.throwaways = {
+        'scratch-spike': {
+          name: 'scratch-spike',
+          path: scratchDir,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          ttlDays: 1,
+          template: 'minimal',
+        },
+      };
+      fs.writeFileSync(configPath, JSON.stringify(cfg), 'utf8');
+
+      const result = await deleteProject('scratch-spike', {
+        configDir,
+        projectsRoot: canonicalProjects,
+      });
+
+      expect(result.name).toBe('scratch-spike');
+      expect(fs.existsSync(scratchDir)).toBe(false);
+
+      const reloadedCfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      expect(reloadedCfg.throwaways['scratch-spike']).toBeUndefined();
+    });
   });
 
   describe('Working Tree Dirty Status Protection', () => {
