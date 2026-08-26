@@ -340,6 +340,36 @@ describe('proj CLI binary build and execution', () => {
     );
     expect(jumpRootOut).toContain(`Jumping to workspace root at ${sampleProjectsDir}`);
   });
+
+  it('executes dist/index.js delete and rm binary commands', async () => {
+    const appToDelete = path.join(sampleProjectsDir, 'binary-del-app');
+    fs.mkdirSync(appToDelete);
+    fs.writeFileSync(path.join(appToDelete, 'index.js'), 'console.log("del");');
+
+    const { stdout: delOut } = await execa(
+      'node',
+      [distIndex, 'delete', 'binary-del-app'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(delOut).toContain('Successfully deleted project "binary-del-app"');
+    expect(fs.existsSync(appToDelete)).toBe(false);
+
+    const appToRm = path.join(sampleProjectsDir, 'binary-rm-app');
+    fs.mkdirSync(appToRm);
+    fs.writeFileSync(path.join(appToRm, 'index.js'), 'console.log("rm");');
+
+    const { stdout: rmOut } = await execa(
+      'node',
+      [distIndex, 'rm', 'binary-rm-app'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(rmOut).toContain('Successfully deleted project "binary-rm-app"');
+    expect(fs.existsSync(appToRm)).toBe(false);
+  });
 });
 
 
