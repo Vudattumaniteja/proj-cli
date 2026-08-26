@@ -106,6 +106,46 @@ export function detectTemplateType(dirPath: string): string | null {
 }
 
 /**
+ * Parses a Git remote URL and returns GitHub repository details if it targets GitHub.
+ * Supports both HTTPS (https://github.com/owner/repo.git) and SSH (git@github.com:owner/repo.git) formats.
+ */
+export function parseGitHubRemote(
+  remoteUrl: string
+): { owner: string; repo: string; webUrl: string } | undefined {
+  if (!remoteUrl || typeof remoteUrl !== 'string') return undefined;
+
+  const trimmed = remoteUrl.trim().replace(/\/+$/, '');
+
+  // 1. SSH / SCP-like syntax: git@github.com:owner/repo[.git]
+  const scpMatch = trimmed.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (scpMatch) {
+    const owner = scpMatch[1];
+    const repo = scpMatch[2].replace(/\.git$/i, '');
+    return {
+      owner,
+      repo,
+      webUrl: `https://github.com/${owner}/${repo}`,
+    };
+  }
+
+  // 2. Standard URL syntax: [protocol://][user(:pass)@]github.com[:port]/owner/repo[.git]
+  const urlMatch = trimmed.match(
+    /^(?:https?|git|ssh|git\+https?):\/\/(?:[^@/]+@)?github\.com(?::\d+)?\/([^/]+)\/([^/]+?)(?:\.git)?$/i
+  );
+  if (urlMatch) {
+    const owner = urlMatch[1];
+    const repo = urlMatch[2].replace(/\.git$/i, '');
+    return {
+      owner,
+      repo,
+      webUrl: `https://github.com/${owner}/${repo}`,
+    };
+  }
+
+  return undefined;
+}
+
+/**
  * Returns formatted template badge string (e.g. `[typescript]`).
  */
 export function getTemplateBadge(templateType: string | null): string {
@@ -141,6 +181,9 @@ export async function inspectProject(
   let isGit = false;
   let branch: string | null = null;
   let dirtyCount = 0;
+  let hasRemote = false;
+  let remoteUrl: string | undefined = undefined;
+  let githubRepo: { owner: string; repo: string; webUrl: string } | undefined = undefined;
 
   if (fs.existsSync(gitDir)) {
     try {
@@ -148,15 +191,41 @@ export async function inspectProject(
       const isRepo = await git.checkIsRepo();
       if (isRepo) {
         isGit = true;
-        const status = await git.status();
-        branch = status.current || 'HEAD';
-        dirtyCount = status.files.length;
+        try {
+          const [status, remotes] = await Promise.all([
+            git.status().catch(() => null),
+            git.getRemotes(true).catch(() => []),
+          ]);
+
+          if (status) {
+            branch = status.current || 'HEAD';
+            dirtyCount = status.files.length;
+          }
+
+          if (remotes && remotes.length > 0) {
+            const origin = remotes.find((r) => r.name === 'origin') ?? remotes[0];
+            const url = origin?.refs?.fetch || origin?.refs?.push;
+            if (url) {
+              hasRemote = true;
+              remoteUrl = url;
+              const parsed = parseGitHubRemote(url);
+              if (parsed) {
+                githubRepo = parsed;
+              }
+            }
+          }
+        } catch {
+          // Gracefully handle git errors without crashing
+        }
       }
     } catch {
       // Gracefully handle git errors without crashing
       isGit = true;
       branch = null;
       dirtyCount = 0;
+      hasRemote = false;
+      remoteUrl = undefined;
+      githubRepo = undefined;
     }
   }
 
@@ -171,6 +240,9 @@ export async function inspectProject(
     templateBadge,
     lastModified,
     isThrowaway,
+    hasRemote,
+    ...(remoteUrl ? { remoteUrl } : {}),
+    ...(githubRepo ? { githubRepo } : {}),
   };
 }
 

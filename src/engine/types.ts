@@ -9,6 +9,13 @@ export interface ProjectInfo {
   templateBadge: string;
   lastModified: Date;
   isThrowaway: boolean;
+  hasRemote: boolean;
+  remoteUrl?: string;
+  githubRepo?: {
+    owner: string;
+    repo: string;
+    webUrl: string;
+  };
 }
 
 export type ProjectTemplate = 'minimal' | 'typescript' | 'python' | 'web';

@@ -291,6 +291,7 @@ describe('Project Discovery Engine', () => {
         templateBadge: '[typescript]',
         lastModified: new Date('2026-08-19T10:30:00Z'),
         isThrowaway: false,
+        hasRemote: false,
       },
       {
         name: 'temp-spike',
@@ -303,6 +304,7 @@ describe('Project Discovery Engine', () => {
         templateBadge: '[python]',
         lastModified: new Date('2026-08-19T11:00:00Z'),
         isThrowaway: true,
+        hasRemote: false,
       },
       {
         name: 'plain-folder',
@@ -315,6 +317,7 @@ describe('Project Discovery Engine', () => {
         templateBadge: '[unknown]',
         lastModified: new Date('2026-08-19T09:00:00Z'),
         isThrowaway: false,
+        hasRemote: false,
       },
     ];
 
