@@ -144,3 +144,19 @@ export interface AdoptResult {
   commitHash?: string;
 }
 
+export interface PublishOptions {
+  configDir?: string;
+  projectsRoot?: string;
+  throwawaysRoot?: string;
+  gitAuthorName?: string;
+  gitAuthorEmail?: string;
+  repoName?: string;
+}
+
+export interface PublishResult {
+  name: string;
+  path: string;
+  repoUrl: string;
+  isPrivate: boolean;
+}
+
