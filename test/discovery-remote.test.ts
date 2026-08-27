@@ -234,6 +234,7 @@ describe('Remote Origin Detection & Git Metadata', () => {
       // 3. Plain non-git project
       const plainDir = path.join(canonicalProjects, 'plain-app');
       fs.mkdirSync(plainDir);
+      fs.writeFileSync(path.join(plainDir, 'package.json'), '{}');
 
       const projects = await listProjects(canonicalProjects, { includeThrowaways: false });
 

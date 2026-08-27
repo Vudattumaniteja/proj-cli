@@ -49,6 +49,8 @@ describe('Project Discovery Engine', () => {
       const proj2 = path.join(canonicalProjects, 'api-service');
       fs.mkdirSync(proj1);
       fs.mkdirSync(proj2);
+      fs.writeFileSync(path.join(proj1, 'package.json'), '{}');
+      fs.writeFileSync(path.join(proj2, 'package.json'), '{}');
 
       const projects = await listProjects(canonicalProjects);
       expect(projects).toHaveLength(2);
@@ -67,6 +69,7 @@ describe('Project Discovery Engine', () => {
       const scratch1 = path.join(throwawaysDir, 'proto-poc');
       fs.mkdirSync(proj1);
       fs.mkdirSync(scratch1);
+      fs.writeFileSync(path.join(proj1, 'package.json'), '{}');
 
       const projects = await listProjects(canonicalProjects);
       expect(projects).toHaveLength(2);
@@ -82,6 +85,7 @@ describe('Project Discovery Engine', () => {
     it('ignores non-directory files and hidden directories in projects root', async () => {
       const regularProj = path.join(canonicalProjects, 'real-project');
       fs.mkdirSync(regularProj);
+      fs.writeFileSync(path.join(regularProj, 'package.json'), '{}');
 
       fs.writeFileSync(path.join(canonicalProjects, 'notes.txt'), 'some notes');
       fs.mkdirSync(path.join(canonicalProjects, '.hidden-folder'));
@@ -135,6 +139,7 @@ describe('Project Discovery Engine', () => {
       const scratch1 = path.join(throwawaysDir, 'proto');
       fs.mkdirSync(proj1);
       fs.mkdirSync(scratch1);
+      fs.writeFileSync(path.join(proj1, 'package.json'), '{}');
 
       const projects = await listProjects(canonicalProjects, {
         includeThrowaways: false,
@@ -155,6 +160,7 @@ describe('Project Discovery Engine', () => {
       fs.mkdirSync(scratchExpired);
       fs.mkdirSync(scratchActive);
       fs.mkdirSync(regularApp);
+      fs.writeFileSync(path.join(regularApp, 'package.json'), '{}');
 
       // Create custom config.json
       const configDir = path.join(tempRoot, 'config');
