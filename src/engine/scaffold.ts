@@ -15,8 +15,36 @@ import {
   type ScaffoldOptions,
   type ScaffoldResult,
 } from './types.js';
+import { RESERVED_FOLDER_NAMES } from './discovery.js';
 
 export * from './types.js';
+
+/**
+ * Validates group name format and prevents path traversal / invalid chars / reserved folders.
+ */
+export function validateGroupName(group: string): void {
+  if (typeof group !== 'string' || group.trim() === '') {
+    throw new Error('Invalid group name: group name cannot be empty');
+  }
+
+  const trimmed = group.trim();
+  if (trimmed === '.' || trimmed === '..') {
+    throw new Error(`Invalid group name "${group}": cannot be "." or ".."`);
+  }
+
+  const invalidCharRegex = /[/\\:*?"<>|]/;
+  if (invalidCharRegex.test(trimmed)) {
+    throw new Error(
+      `Invalid group name "${group}": contains forbidden characters (/ \\ : * ? " < > |)`
+    );
+  }
+
+  if (RESERVED_FOLDER_NAMES.has(trimmed.toLowerCase())) {
+    throw new Error(
+      `Invalid group name "${group}": "${group}" is a reserved directory name`
+    );
+  }
+}
 
 /**
  * Validates project name format and prevents path traversal / invalid chars.
@@ -38,6 +66,55 @@ export function validateProjectName(name: string): void {
       `Invalid project name "${name}": contains forbidden characters (/ \\ : * ? " < > |)`
     );
   }
+}
+
+/**
+ * Parses and validates input project name and optional group, supporting "group/name" syntax.
+ */
+export function parseProjectNameAndGroup(
+  inputName: string,
+  explicitGroup?: string
+): { name: string; group?: string } {
+  if (typeof inputName !== 'string' || inputName.trim() === '') {
+    throw new Error('Invalid project name: project name cannot be empty');
+  }
+
+  const normalized = inputName.trim().replace(/\\/g, '/');
+  const segments = normalized.split('/').filter(Boolean);
+
+  if (segments.length === 0) {
+    throw new Error('Invalid project name: project name cannot be empty');
+  }
+
+  if (segments.length > 2) {
+    throw new Error(
+      `Invalid project name "${inputName}": multi-level nested groups beyond 1 level are not supported`
+    );
+  }
+
+  let group: string | undefined = explicitGroup?.trim() || undefined;
+  let projectName: string;
+
+  if (segments.length === 2) {
+    const [groupSegment, nameSegment] = segments;
+    if (group && group !== groupSegment) {
+      throw new Error(
+        `Conflicting group specified: "${groupSegment}" in path vs "${group}" in options`
+      );
+    }
+    group = groupSegment;
+    projectName = nameSegment;
+  } else {
+    projectName = segments[0];
+  }
+
+  if (group) {
+    validateGroupName(group);
+  }
+
+  validateProjectName(projectName);
+
+  return { name: projectName, group };
 }
 
 /**
@@ -230,10 +307,8 @@ export async function scaffoldProject(
   template: ProjectTemplate,
   options?: ScaffoldOptions
 ): Promise<ScaffoldResult> {
-  validateProjectName(name);
+  const { name: projectName, group } = parseProjectNameAndGroup(name, options?.group);
   validateTemplate(template);
-
-  const trimmedName = name.trim();
 
   // Resolve target directory path
   let parentDir: string;
@@ -244,22 +319,23 @@ export async function scaffoldProject(
     parentDir = path.resolve(config.projectsRoot);
   }
 
-  const projectPath = path.join(parentDir, trimmedName);
+  const targetGroupDir = group ? path.join(parentDir, group) : parentDir;
+  const projectPath = path.join(targetGroupDir, projectName);
 
   if (fs.existsSync(projectPath)) {
-    throw new Error(`Project "${trimmedName}" already exists at ${projectPath}`);
+    throw new Error(`Project "${projectName}" already exists at ${projectPath}`);
   }
 
-  // Ensure parent directory exists
-  if (!fs.existsSync(parentDir)) {
-    fs.mkdirSync(parentDir, { recursive: true });
+  // Ensure target group directory / parent directory exists
+  if (!fs.existsSync(targetGroupDir)) {
+    fs.mkdirSync(targetGroupDir, { recursive: true });
   }
 
   // Create project directory
   fs.mkdirSync(projectPath, { recursive: true });
 
   // Generate template files
-  const files = generateTemplateFiles(projectPath, trimmedName, template, options);
+  const files = generateTemplateFiles(projectPath, projectName, template, options);
 
   // Initialize local Git repository and create snapshot commit
   const git = simpleGit(projectPath, { maxConcurrentProcesses: 2 });
@@ -276,7 +352,8 @@ export async function scaffoldProject(
   const commitHash = (await git.revparse(['HEAD'])).trim();
 
   return {
-    name: trimmedName,
+    name: projectName,
+    ...(group ? { group } : {}),
     path: projectPath,
     template,
     commitHash,

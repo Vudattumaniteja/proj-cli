@@ -402,4 +402,122 @@ describe('Project Deletion Engine (deleteProject)', () => {
       expect(fs.existsSync(projectDir)).toBe(true);
     });
   });
+
+  describe('Group Project Deletion & Empty Group Auto-Pruning', () => {
+    it('deletes project by group/name syntax and auto-prunes empty parent group folder', async () => {
+      const groupDir = path.join(canonicalProjects, 'hackathons');
+      const projectDir = path.join(groupDir, 'agent-bot');
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, 'package.json'), '{}');
+
+      const result = await deleteProject('hackathons/agent-bot', {
+        configDir,
+        projectsRoot: canonicalProjects,
+      });
+
+      expect(result.name).toBe('agent-bot');
+      expect(result.path).toBe(projectDir);
+      expect(result.groupPruned).toBe(true);
+      expect(result.prunedGroup).toBe('hackathons');
+
+      expect(fs.existsSync(projectDir)).toBe(false);
+      expect(fs.existsSync(groupDir)).toBe(false);
+    });
+
+    it('deletes project by standalone name across groups and auto-prunes empty group folder', async () => {
+      const groupDir = path.join(canonicalProjects, 'ai-tools');
+      const projectDir = path.join(groupDir, 'unique-bot');
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, 'package.json'), '{}');
+
+      const result = await deleteProject('unique-bot', {
+        configDir,
+        projectsRoot: canonicalProjects,
+      });
+
+      expect(result.name).toBe('unique-bot');
+      expect(result.groupPruned).toBe(true);
+      expect(result.prunedGroup).toBe('ai-tools');
+
+      expect(fs.existsSync(projectDir)).toBe(false);
+      expect(fs.existsSync(groupDir)).toBe(false);
+    });
+
+    it('does not prune group folder if other projects remain inside the group', async () => {
+      const groupDir = path.join(canonicalProjects, 'multi-group');
+      const proj1 = path.join(groupDir, 'proj-1');
+      const proj2 = path.join(groupDir, 'proj-2');
+      fs.mkdirSync(proj1, { recursive: true });
+      fs.mkdirSync(proj2, { recursive: true });
+      fs.writeFileSync(path.join(proj1, 'package.json'), '{}');
+      fs.writeFileSync(path.join(proj2, 'package.json'), '{}');
+
+      const result = await deleteProject('multi-group/proj-1', {
+        configDir,
+        projectsRoot: canonicalProjects,
+      });
+
+      expect(result.name).toBe('proj-1');
+      expect(result.groupPruned).toBeFalsy();
+
+      expect(fs.existsSync(proj1)).toBe(false);
+      expect(fs.existsSync(proj2)).toBe(true);
+      expect(fs.existsSync(groupDir)).toBe(true);
+    });
+
+    it('does not prune group folder if non-project files remain inside the group', async () => {
+      const groupDir = path.join(canonicalProjects, 'notes-group');
+      const proj1 = path.join(groupDir, 'proj-1');
+      fs.mkdirSync(proj1, { recursive: true });
+      fs.writeFileSync(path.join(proj1, 'package.json'), '{}');
+      fs.writeFileSync(path.join(groupDir, 'notes.md'), '# Group Notes');
+
+      const result = await deleteProject('notes-group/proj-1', {
+        configDir,
+        projectsRoot: canonicalProjects,
+      });
+
+      expect(result.name).toBe('proj-1');
+      expect(result.groupPruned).toBeFalsy();
+
+      expect(fs.existsSync(proj1)).toBe(false);
+      expect(fs.existsSync(groupDir)).toBe(true);
+      expect(fs.existsSync(path.join(groupDir, 'notes.md'))).toBe(true);
+    });
+
+    it('never prunes canonical projectsRoot when deleting a root standalone project', async () => {
+      const projDir = path.join(canonicalProjects, 'standalone-app');
+      fs.mkdirSync(projDir);
+      fs.writeFileSync(path.join(projDir, 'package.json'), '{}');
+
+      const result = await deleteProject('standalone-app', {
+        configDir,
+        projectsRoot: canonicalProjects,
+      });
+
+      expect(result.name).toBe('standalone-app');
+      expect(result.groupPruned).toBeFalsy();
+      expect(fs.existsSync(projDir)).toBe(false);
+      expect(fs.existsSync(canonicalProjects)).toBe(true);
+    });
+
+    it('never prunes throwawaysRoot when deleting a throwaway project', async () => {
+      const throwawaysDir = path.join(tempRoot, 'throwaways');
+      fs.mkdirSync(throwawaysDir, { recursive: true });
+      const scratchDir = path.join(throwawaysDir, 'temp-proj');
+      fs.mkdirSync(scratchDir);
+      fs.writeFileSync(path.join(scratchDir, 'package.json'), '{}');
+
+      const result = await deleteProject('temp-proj', {
+        configDir,
+        projectsRoot: canonicalProjects,
+        throwawaysRoot: throwawaysDir,
+      });
+
+      expect(result.name).toBe('temp-proj');
+      expect(result.groupPruned).toBeFalsy();
+      expect(fs.existsSync(scratchDir)).toBe(false);
+      expect(fs.existsSync(throwawaysDir)).toBe(true);
+    });
+  });
 });

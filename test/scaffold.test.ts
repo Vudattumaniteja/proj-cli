@@ -43,8 +43,6 @@ describe('Project Scaffolding Engine', () => {
 
     it('rejects invalid project name characters', async () => {
       const invalidNames = [
-        'bad/name',
-        'bad\\name',
         'bad:name',
         'bad*name',
         'bad?name',
@@ -61,6 +59,26 @@ describe('Project Scaffolding Engine', () => {
           scaffoldProject(name, 'minimal', { parentDir: projectsDir, configDir })
         ).rejects.toThrow(/invalid project name/i);
       }
+    });
+
+    it('rejects multi-level nested group paths beyond 1 level', async () => {
+      await expect(
+        scaffoldProject('group/subgroup/my-app', 'minimal', { parentDir: projectsDir, configDir })
+      ).rejects.toThrow(/multi-level nested groups/i);
+
+      await expect(
+        scaffoldProject('a/b/c/d', 'minimal', { parentDir: projectsDir, configDir })
+      ).rejects.toThrow(/multi-level nested groups/i);
+    });
+
+    it('rejects reserved folder names as group name in path syntax or options', async () => {
+      await expect(
+        scaffoldProject('throwaways/my-app', 'minimal', { parentDir: projectsDir, configDir })
+      ).rejects.toThrow(/reserved directory name/i);
+
+      await expect(
+        scaffoldProject('my-app', 'minimal', { parentDir: projectsDir, configDir, group: '.git' })
+      ).rejects.toThrow(/reserved directory name/i);
     });
 
     it('rejects unsupported template variants', async () => {
@@ -80,6 +98,74 @@ describe('Project Scaffolding Engine', () => {
 
       await expect(
         scaffoldProject('existing-app', 'minimal', {
+          parentDir: projectsDir,
+          configDir,
+        })
+      ).rejects.toThrow(/already exists/i);
+    });
+  });
+
+  describe('Group Scaffolding (group/name and options.group)', () => {
+    it('scaffolds project in group folder using group/name syntax and auto-creates missing group directory', async () => {
+      const groupDir = path.join(projectsDir, 'hackathons');
+      expect(fs.existsSync(groupDir)).toBe(false);
+
+      const result = await scaffoldProject('hackathons/agent-bot', 'typescript', {
+        parentDir: projectsDir,
+        configDir,
+      });
+
+      expect(result.name).toBe('agent-bot');
+      expect(result.group).toBe('hackathons');
+      expect(result.path).toBe(path.join(projectsDir, 'hackathons', 'agent-bot'));
+      expect(fs.existsSync(result.path)).toBe(true);
+      expect(fs.existsSync(path.join(result.path, 'package.json'))).toBe(true);
+      expect(fs.existsSync(path.join(result.path, 'AGENTS.md'))).toBe(true);
+
+      const git = simpleGit(result.path);
+      const isRepo = await git.checkIsRepo();
+      expect(isRepo).toBe(true);
+      const log = await git.log();
+      expect(log.total).toBe(1);
+    });
+
+    it('scaffolds project in group folder using options.group', async () => {
+      const result = await scaffoldProject('cli-tool', 'typescript', {
+        parentDir: projectsDir,
+        configDir,
+        group: 'ai-tools',
+      });
+
+      expect(result.name).toBe('cli-tool');
+      expect(result.group).toBe('ai-tools');
+      expect(result.path).toBe(path.join(projectsDir, 'ai-tools', 'cli-tool'));
+      expect(fs.existsSync(result.path)).toBe(true);
+    });
+
+    it('supports creating same project name in different groups', async () => {
+      const res1 = await scaffoldProject('team-a/demo', 'minimal', {
+        parentDir: projectsDir,
+        configDir,
+      });
+      const res2 = await scaffoldProject('team-b/demo', 'minimal', {
+        parentDir: projectsDir,
+        configDir,
+      });
+
+      expect(res1.path).toBe(path.join(projectsDir, 'team-a', 'demo'));
+      expect(res2.path).toBe(path.join(projectsDir, 'team-b', 'demo'));
+      expect(fs.existsSync(res1.path)).toBe(true);
+      expect(fs.existsSync(res2.path)).toBe(true);
+    });
+
+    it('rejects duplicate project within the same group', async () => {
+      await scaffoldProject('team-a/unique-app', 'minimal', {
+        parentDir: projectsDir,
+        configDir,
+      });
+
+      await expect(
+        scaffoldProject('team-a/unique-app', 'minimal', {
           parentDir: projectsDir,
           configDir,
         })
