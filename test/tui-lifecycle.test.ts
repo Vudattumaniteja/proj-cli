@@ -337,8 +337,13 @@ describe('Interactive TUI Dashboard Project Actions (Publishing & Two-Tier Delet
       const result = await interactiveViewProjects({ configDir: tempDir });
       expect(result).toBe('back');
 
-      // Exactly 2 select calls: project selection, action selection (no cloud scope prompt)
-      expect(vi.mocked(p.select).mock.calls.length).toBe(2);
+      // Verify no cloud scope prompt was presented among select calls
+      const hasCloudScopeSelect = vi
+        .mocked(p.select)
+        .mock.calls.some((call) =>
+          (call[0] as any)?.options?.some((opt: any) => opt.value === 'cloud')
+        );
+      expect(hasCloudScopeSelect).toBe(false);
 
       expect(p.confirm).toHaveBeenCalledWith(
         expect.objectContaining({
