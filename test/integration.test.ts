@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { simpleGit } from 'simple-git';
+import { readIpcToken } from '../src/ipc/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -460,6 +461,190 @@ describe('proj CLI binary build and execution', () => {
     expect(moveRootOut).toContain('Successfully moved project "integ-bot" to root workspace');
     expect(fs.existsSync(path.join(sampleProjectsDir, 'integ-bot'))).toBe(true);
     expect(fs.existsSync(path.join(sampleProjectsDir, 'ai-spikes'))).toBe(false);
+  });
+
+  it('executes full grouped project lifecycle end-to-end via CLI binary (scaffold -> list -> cd/code IPC -> move -> delete -> auto-prune)', async () => {
+    // 1. Scaffold in group
+    const { stdout: newOut } = await execa(
+      'node',
+      [distIndex, 'new', 'web-experiments/canvas-app', '-t', 'web'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(newOut).toContain('Successfully created project "canvas-app"');
+    const projectDir = path.join(sampleProjectsDir, 'web-experiments', 'canvas-app');
+    expect(fs.existsSync(projectDir)).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, 'index.html'))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, 'AGENTS.md'))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, '.git'))).toBe(true);
+
+    // 2. Discovery: list and list --json
+    const { stdout: listOut } = await execa('node', [distIndex, 'list'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(listOut).toContain('[web-experiments]');
+    expect(listOut).toContain('canvas-app');
+    expect(listOut).toContain('[web]');
+
+    const { stdout: jsonOut } = await execa('node', [distIndex, 'list', '--json'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    const parsed = JSON.parse(jsonOut.trim());
+    const found = parsed.find((p: any) => p.name === 'canvas-app');
+    expect(found).toBeDefined();
+    expect(found.group).toBe('web-experiments');
+    expect(found.templateBadge).toBe('[web]');
+
+    // 3. Navigation: cd and code to project and group
+    const { stdout: cdProjOut } = await execa('node', [distIndex, 'cd', 'canvas-app'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(cdProjOut).toContain('Jumping to project "canvas-app"');
+    const cdToken = readIpcToken({ configDir: tempConfigDir });
+    expect(cdToken?.action).toBe('cd');
+    expect(cdToken?.targetPath).toBe(path.resolve(projectDir));
+
+    const { stdout: codeProjOut } = await execa('node', [distIndex, 'code', 'web-experiments/canvas-app'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(codeProjOut).toContain('Opening project "web-experiments/canvas-app" in VS Code');
+    const codeToken = readIpcToken({ configDir: tempConfigDir });
+    expect(codeToken?.action).toBe('code');
+    expect(codeToken?.targetPath).toBe(path.resolve(projectDir));
+
+    const { stdout: cdGroupOut } = await execa('node', [distIndex, 'cd', 'web-experiments'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(cdGroupOut).toContain('Jumping to project "web-experiments"');
+    const cdGroupToken = readIpcToken({ configDir: tempConfigDir });
+    expect(cdGroupToken?.action).toBe('cd');
+    expect(cdGroupToken?.targetPath).toBe(path.resolve(path.join(sampleProjectsDir, 'web-experiments')));
+
+    // 4. Move project to another group
+    const { stdout: moveOut } = await execa(
+      'node',
+      [distIndex, 'move', 'canvas-app', 'production-apps'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(moveOut).toContain('Successfully moved project "canvas-app" to group "production-apps"');
+    const movedDir = path.join(sampleProjectsDir, 'production-apps', 'canvas-app');
+    expect(fs.existsSync(movedDir)).toBe(true);
+    expect(fs.existsSync(path.join(movedDir, 'index.html'))).toBe(true);
+    // Source group auto-pruned
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'web-experiments'))).toBe(false);
+
+    // 5. Delete project and auto-prune destination group
+    const { stdout: deleteOut } = await execa(
+      'node',
+      [distIndex, 'delete', 'canvas-app'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(deleteOut).toContain('Successfully deleted project "canvas-app"');
+    expect(fs.existsSync(movedDir)).toBe(false);
+    // Destination group auto-pruned
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'production-apps'))).toBe(false);
+  });
+
+  it('executes collision detection and resolution across groups via binary commands', async () => {
+    // 1. Scaffold duplicate project names across different groups
+    await execa(
+      'node',
+      [distIndex, 'new', 'team-alpha/micro-service', '-t', 'minimal'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    await execa(
+      'node',
+      [distIndex, 'new', 'team-beta/micro-service', '-t', 'minimal'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+
+    const rootDup = path.join(sampleProjectsDir, 'micro-service');
+    fs.mkdirSync(rootDup, { recursive: true });
+    fs.writeFileSync(path.join(rootDup, 'package.json'), '{}');
+
+    // 2. proj cd micro-service (ambiguous) -> should fail
+    const cdPromise = execa('node', [distIndex, 'cd', 'micro-service'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    await expect(cdPromise).rejects.toThrow();
+    try {
+      await cdPromise;
+    } catch (err: any) {
+      expect(err.stderr).toContain('Ambiguous project name "micro-service"');
+      expect(err.stderr).toContain('team-alpha/micro-service');
+      expect(err.stderr).toContain('team-beta/micro-service');
+      expect(err.stderr).toContain('micro-service');
+    }
+
+    // 3. proj code micro-service (ambiguous) -> should fail
+    const codePromise = execa('node', [distIndex, 'code', 'micro-service'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    await expect(codePromise).rejects.toThrow();
+    try {
+      await codePromise;
+    } catch (err: any) {
+      expect(err.stderr).toContain('Ambiguous project name "micro-service"');
+    }
+
+    // 4. Exact path navigation -> succeeds
+    const { stdout: exactCdOut } = await execa('node', [distIndex, 'cd', 'team-alpha/micro-service'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(exactCdOut).toContain('Jumping to project "team-alpha/micro-service"');
+    const exactCdToken = readIpcToken({ configDir: tempConfigDir });
+    expect(exactCdToken?.action).toBe('cd');
+    expect(exactCdToken?.targetPath).toBe(path.resolve(path.join(sampleProjectsDir, 'team-alpha', 'micro-service')));
+
+    const { stdout: exactCodeOut } = await execa('node', [distIndex, 'code', 'team-beta/micro-service'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(exactCodeOut).toContain('Opening project "team-beta/micro-service" in VS Code');
+    const exactCodeToken = readIpcToken({ configDir: tempConfigDir });
+    expect(exactCodeToken?.action).toBe('code');
+    expect(exactCodeToken?.targetPath).toBe(path.resolve(path.join(sampleProjectsDir, 'team-beta', 'micro-service')));
+
+    // 5. Ambiguous move -> should fail
+    await expect(
+      execa('node', [distIndex, 'move', 'micro-service', 'target-group'], {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      })
+    ).rejects.toThrow();
+
+    // 6. Disambiguated move -> succeeds
+    const { stdout: moveOut } = await execa(
+      'node',
+      [distIndex, 'move', 'team-alpha/micro-service', 'target-group'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(moveOut).toContain('Successfully moved project "micro-service" to group "target-group"');
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'target-group', 'micro-service'))).toBe(true);
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'team-alpha'))).toBe(false);
+
+    // 7. Cleanup
+    await execa('node', [distIndex, 'delete', 'team-beta/micro-service'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    await execa('node', [distIndex, 'delete', 'target-group/micro-service'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    await execa('node', [distIndex, 'delete', 'micro-service'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'team-beta'))).toBe(false);
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'target-group'))).toBe(false);
+    expect(fs.existsSync(rootDup)).toBe(false);
   });
 });
 
