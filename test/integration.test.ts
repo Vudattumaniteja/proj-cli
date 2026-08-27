@@ -416,6 +416,51 @@ describe('proj CLI binary build and execution', () => {
     expect(delHelp).toContain('--cloud');
     expect(delHelp).toContain('--force');
   });
+
+  it('executes dist/index.js new <group>/<project>, move, and sectioned list binary commands', async () => {
+    // 1. Scaffold project in group via binary
+    const { stdout: newGroupOut } = await execa(
+      'node',
+      [distIndex, 'new', 'hackathons/integ-bot', '-t', 'minimal'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(newGroupOut).toContain('Successfully created project "integ-bot"');
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'hackathons', 'integ-bot', 'AGENTS.md'))).toBe(true);
+
+    // 2. List table shows group section header
+    const { stdout: listOut } = await execa('node', [distIndex, 'list'], {
+      env: { PROJ_CONFIG_DIR: tempConfigDir },
+    });
+    expect(listOut).toContain('[hackathons]');
+    expect(listOut).toContain('integ-bot');
+    expect(listOut).toContain('[root]');
+
+    // 3. Move project to another group via binary
+    const { stdout: moveOut } = await execa(
+      'node',
+      [distIndex, 'move', 'integ-bot', 'ai-spikes'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(moveOut).toContain('Successfully moved project "integ-bot" to group "ai-spikes"');
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'ai-spikes', 'integ-bot'))).toBe(true);
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'hackathons'))).toBe(false);
+
+    // 4. Move project to root via binary
+    const { stdout: moveRootOut } = await execa(
+      'node',
+      [distIndex, 'mv', 'integ-bot', 'root'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(moveRootOut).toContain('Successfully moved project "integ-bot" to root workspace');
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'integ-bot'))).toBe(true);
+    expect(fs.existsSync(path.join(sampleProjectsDir, 'ai-spikes'))).toBe(false);
+  });
 });
 
 
