@@ -14,6 +14,10 @@ import {
 import { emitIpcToken } from '../ipc/index.js';
 import {
   listProjects,
+  listGroups,
+  createGroup,
+  moveProject,
+  validateGroupName,
   scaffoldProject,
   createThrowaway,
   checkExpiredThrowaways,
@@ -33,6 +37,7 @@ import {
   SUPPORTED_TEMPLATES,
   type ProjectTemplate,
   type ProjectInfo,
+  type GroupInfo,
   type CheckpointInfo,
 } from '../engine/index.js';
 
@@ -46,7 +51,7 @@ export interface TuiOptions {
  * Interactive Wizard for scaffolding a new permanent project.
  */
 export async function interactiveNewProject(
-  options?: TuiOptions & { initialName?: string }
+  options?: TuiOptions & { initialName?: string; initialGroup?: string }
 ): Promise<'exit' | void> {
   let name = options?.initialName;
   if (!name) {
@@ -68,6 +73,76 @@ export async function interactiveNewProject(
       return;
     }
     name = enteredName.trim();
+  }
+
+  let targetGroup: string | undefined = options?.initialGroup;
+
+  // Prompt destination if not already provided via initialGroup or path syntax
+  if (!targetGroup) {
+    const normalized = name.replace(/\\/g, '/');
+    if (normalized.includes('/')) {
+      const parts = normalized.split('/').filter(Boolean);
+      if (parts.length === 2) {
+        targetGroup = parts[0];
+        name = parts[1];
+      }
+    } else {
+      const config = getConfig({ configDir: options?.configDir });
+      const existingGroups = await listGroups(config.projectsRoot, { configDir: options?.configDir });
+
+      const destOptions: Array<{ value: string; label: string; hint?: string }> = [
+        { value: '__root__', label: '[Root]', hint: 'Top-level workspace directory' },
+      ];
+
+      for (const g of existingGroups) {
+        destOptions.push({
+          value: g.name,
+          label: `📁 ${g.name}`,
+          hint: `Scaffold inside group "${g.name}"`,
+        });
+      }
+
+      destOptions.push({
+        value: '__new_group__',
+        label: '➕ New group...',
+        hint: 'Create a new group for this project',
+      });
+
+      const selectedDest = await p.select({
+        message: 'Select project destination:',
+        options: destOptions,
+      });
+
+      if (p.isCancel(selectedDest)) {
+        p.cancel('Project creation cancelled.');
+        return;
+      }
+
+      if (selectedDest === '__new_group__') {
+        const enteredGroupName = await p.text({
+          message: 'Enter new group name:',
+          placeholder: 'hackathons',
+          validate(val) {
+            if (!val || val.trim().length === 0) {
+              return 'Group name cannot be empty';
+            }
+            try {
+              validateGroupName(val.trim());
+            } catch (err: unknown) {
+              return err instanceof Error ? err.message : 'Invalid group name';
+            }
+          },
+        });
+
+        if (p.isCancel(enteredGroupName)) {
+          p.cancel('Project creation cancelled.');
+          return;
+        }
+        targetGroup = enteredGroupName.trim();
+      } else if (selectedDest !== '__root__') {
+        targetGroup = selectedDest as string;
+      }
+    }
   }
 
   const templateOptions = SUPPORTED_TEMPLATES.map((t) => {
@@ -99,6 +174,7 @@ export async function interactiveNewProject(
   try {
     const result = await scaffoldProject(name, selectedTemplate as ProjectTemplate, {
       configDir: options?.configDir,
+      group: targetGroup,
     });
     s.stop(`Successfully scaffolded "${result.name}" with Git snapshot.`);
 
@@ -295,78 +371,263 @@ export async function interactiveRollback(
 }
 
 /**
- * Interactive repository browser and context action menu ('View & Jump to Projects').
+ * Interactive drill-down project organizer and browser ('📂 Project Organizer & Browser').
  */
-export async function interactiveViewProjects(options?: TuiOptions): Promise<'exit' | 'back'> {
-  const config = getConfig({ configDir: options?.configDir });
-  const s = p.spinner();
-  s.start('Scanning workspace repositories & scratchpads...');
+export async function interactiveViewProjects(
+  options?: TuiOptions,
+  initialGroup?: string
+): Promise<'exit' | 'back'> {
+  let currentGroup = initialGroup;
 
-  let projects: ProjectInfo[] = [];
-  try {
-    projects = await listProjects(config.projectsRoot, {
-      throwawaysRoot: config.throwawaysRoot,
-      configDir: options?.configDir,
-      now: options?.now,
-    });
-    s.stop(`Discovered ${projects.length} project(s).`);
-  } catch (err: unknown) {
-    s.stop('Failed to scan workspace.');
-    p.log.error(err instanceof Error ? err.message : String(err));
-    return 'back';
-  }
+  while (true) {
+    const config = getConfig({ configDir: options?.configDir });
+    const s = p.spinner();
+    s.start('Scanning workspace repositories & scratchpads...');
 
-  if (projects.length === 0) {
-    p.note(
-      `No projects found in workspace root: ${config.projectsRoot}\nUse "proj new <name>" to create one!`,
-      'Workspace Empty'
-    );
-    return 'back';
-  }
-
-  const projectOptions = projects.map((proj) => {
-    const gitStatus = proj.isGit
-      ? `${proj.branch || 'HEAD'} ${
-          proj.isDirty
-            ? pc.yellow(`● (${proj.dirtyCount} dirty)`)
-            : pc.green('✔ clean')
-        }`
-      : pc.dim('non-git');
-
-    let throwawayBadge = '';
-    if (proj.isThrowaway) {
-      throwawayBadge = proj.isExpired
-        ? pc.red(' [throwaway: EXPIRED]')
-        : pc.magenta(' [throwaway]');
+    let projects: ProjectInfo[] = [];
+    let groups: GroupInfo[] = [];
+    try {
+      [projects, groups] = await Promise.all([
+        listProjects(config.projectsRoot, {
+          throwawaysRoot: config.throwawaysRoot,
+          configDir: options?.configDir,
+          now: options?.now,
+        }),
+        listGroups(config.projectsRoot, {
+          throwawaysRoot: config.throwawaysRoot,
+          configDir: options?.configDir,
+          now: options?.now,
+        }),
+      ]);
+      s.stop(`Discovered ${projects.length} project(s) across ${groups.length} group(s).`);
+    } catch (err: unknown) {
+      s.stop('Failed to scan workspace.');
+      p.log.error(err instanceof Error ? err.message : String(err));
+      return 'back';
     }
-    const badge = pc.dim(proj.templateBadge);
 
-    return {
-      value: proj.name,
-      label: `${proj.name} ${badge}${throwawayBadge}`,
-      hint: `${gitStatus} • ${proj.path}`,
-    };
-  });
+    // If currently drilled down into a group
+    if (currentGroup) {
+      const targetGroup = groups.find((g) => g.name === currentGroup);
+      if (!targetGroup) {
+        currentGroup = undefined;
+        continue;
+      }
 
-  projectOptions.push({
-    value: '__back__',
-    label: pc.dim('↩ Back to Main Dashboard'),
-    hint: '',
-  });
+      const groupProjects = projects.filter((p) => p.group === currentGroup);
+      const groupPath = targetGroup.path;
 
-  const selectedProjName = await p.select({
-    message: 'Select a project to inspect or take action:',
-    options: projectOptions,
-  });
+      const itemOptions: Array<{ value: string; label: string; hint?: string }> = [];
 
-  if (p.isCancel(selectedProjName) || selectedProjName === '__back__') {
-    return 'back';
+      for (const proj of groupProjects) {
+        const gitStatus = proj.isGit
+          ? `${proj.branch || 'HEAD'} ${
+              proj.isDirty
+                ? pc.yellow(`● (${proj.dirtyCount} dirty)`)
+                : pc.green('✔ clean')
+            }`
+          : pc.dim('non-git');
+
+        const badge = pc.dim(proj.templateBadge);
+        itemOptions.push({
+          value: proj.name,
+          label: `${proj.name} ${badge}`,
+          hint: `${gitStatus} • ${proj.path}`,
+        });
+      }
+
+      // Quick actions
+      itemOptions.push({
+        value: '__new_project_in_group__',
+        label: '✨ Create New Project in Group',
+        hint: `Scaffold a new project inside "${currentGroup}"`,
+      });
+      itemOptions.push({
+        value: '__jump_group__',
+        label: '🚀 Jump to Group Folder',
+        hint: `Navigate shell to ${groupPath}`,
+      });
+      itemOptions.push({
+        value: '__back_groups__',
+        label: pc.dim('↩ Back to Groups'),
+        hint: '',
+      });
+
+      const selected = await p.select({
+        message: `Group: "${currentGroup}" (${groupProjects.length} project${groupProjects.length === 1 ? '' : 's'}):`,
+        options: itemOptions,
+      });
+
+      if (p.isCancel(selected) || selected === '__back_groups__' || !selected) {
+        currentGroup = undefined;
+        continue;
+      }
+
+      if (selected === '__jump_group__') {
+        emitIpcToken('cd', groupPath, { configDir: options?.configDir });
+        p.outro(`Emitted IPC token. Jumping to group "${currentGroup}" (${groupPath}).`);
+        return 'exit';
+      }
+
+      if (selected === '__new_project_in_group__') {
+        const res = await interactiveNewProject({
+          ...options,
+          initialGroup: currentGroup,
+        });
+        if (res === 'exit') {
+          return 'exit';
+        }
+        continue;
+      }
+
+      // Project selected from group view
+      const targetProject = groupProjects.find((p) => p.name === selected);
+      if (!targetProject) {
+        return 'back';
+      }
+
+      const actionRes = await handleProjectContextActions(
+        targetProject,
+        projects,
+        groups,
+        config,
+        options
+      );
+      if (actionRes === 'exit') {
+        return 'exit';
+      }
+      continue;
+    }
+
+    // Top-Level View:
+    // Display group folders with item counts, standalone root projects / throwaways, and Create New Group action
+    const topOptions: Array<{ value: string; label: string; hint?: string }> = [];
+
+    for (const group of groups) {
+      topOptions.push({
+        value: `group:${group.name}`,
+        label: `📁 ${group.name} (${group.projectCount} project${group.projectCount === 1 ? '' : 's'})`,
+        hint: `${group.projectCount} project${group.projectCount === 1 ? '' : 's'} • ${group.path}`,
+      });
+    }
+
+    // Standalone root projects & throwaways
+    const rootProjects = projects.filter((p) => !p.group);
+    for (const proj of rootProjects) {
+      const gitStatus = proj.isGit
+        ? `${proj.branch || 'HEAD'} ${
+            proj.isDirty
+              ? pc.yellow(`● (${proj.dirtyCount} dirty)`)
+              : pc.green('✔ clean')
+          }`
+        : pc.dim('non-git');
+
+      let throwawayBadge = '';
+      if (proj.isThrowaway) {
+        throwawayBadge = proj.isExpired
+          ? pc.red(' [throwaway: EXPIRED]')
+          : pc.magenta(' [throwaway]');
+      }
+      const badge = pc.dim(proj.templateBadge);
+
+      topOptions.push({
+        value: proj.name,
+        label: `${proj.name} ${badge}${throwawayBadge}`,
+        hint: `${gitStatus} • ${proj.path}`,
+      });
+    }
+
+    // Action to create a new group
+    topOptions.push({
+      value: '__new_group__',
+      label: '➕ Create New Group',
+      hint: 'Create a new project group directory',
+    });
+
+    topOptions.push({
+      value: '__back__',
+      label: pc.dim('↩ Back to Main Dashboard'),
+      hint: '',
+    });
+
+    const selectedTop = await p.select({
+      message: 'Select a group, project, or action:',
+      options: topOptions,
+    });
+
+    if (p.isCancel(selectedTop) || selectedTop === '__back__' || !selectedTop) {
+      return 'back';
+    }
+
+    if (selectedTop === '__new_group__') {
+      const enteredGroupName = await p.text({
+        message: 'Enter new group name:',
+        placeholder: 'hackathons',
+        validate(val) {
+          if (!val || val.trim().length === 0) return 'Group name cannot be empty';
+          try {
+            validateGroupName(val.trim());
+          } catch (err: unknown) {
+            return err instanceof Error ? err.message : 'Invalid group name';
+          }
+        },
+      });
+
+      if (p.isCancel(enteredGroupName)) {
+        p.cancel('Group creation cancelled.');
+        continue;
+      }
+
+      const sCreate = p.spinner();
+      sCreate.start(`Creating group "${enteredGroupName.trim()}"...`);
+      try {
+        const newGroup = await createGroup(enteredGroupName.trim(), {
+          configDir: options?.configDir,
+          projectsRoot: config.projectsRoot,
+        });
+        sCreate.stop(`Successfully created group "${newGroup.name}".`);
+        p.note(`Group Path: ${newGroup.path}`, 'Group Created');
+      } catch (err: unknown) {
+        sCreate.stop('Failed to create group.');
+        p.log.error(err instanceof Error ? err.message : String(err));
+      }
+      continue;
+    }
+
+    if (typeof selectedTop === 'string' && selectedTop.startsWith('group:')) {
+      currentGroup = selectedTop.slice('group:'.length);
+      continue;
+    }
+
+    // Root project selected
+    const targetProject = rootProjects.find((p) => p.name === selectedTop);
+    if (!targetProject) {
+      return 'back';
+    }
+
+    const actionRes = await handleProjectContextActions(
+      targetProject,
+      projects,
+      groups,
+      config,
+      options
+    );
+    if (actionRes === 'exit') {
+      return 'exit';
+    }
   }
+}
 
-  const targetProject = projects.find((p) => p.name === selectedProjName);
-  if (!targetProject) return 'back';
-
-  // Context Actions Menu for selected project
+/**
+ * Project Context Actions Menu Handler.
+ */
+async function handleProjectContextActions(
+  targetProject: ProjectInfo,
+  allProjects: ProjectInfo[],
+  allGroups: GroupInfo[],
+  config: ReturnType<typeof getConfig>,
+  options?: TuiOptions
+): Promise<'exit' | 'back'> {
   const actionOptions: Array<{ value: string; label: string; hint?: string }> = [
     {
       value: 'jump',
@@ -423,11 +684,18 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
       }
     );
   } else {
-    actionOptions.push({
-      value: 'delete',
-      label: '🗑️ Delete Project',
-      hint: 'Delete project locally or from GitHub',
-    });
+    actionOptions.push(
+      {
+        value: 'move',
+        label: '📦 Move to Another Group / Root',
+        hint: 'Relocate project to a group subfolder or root workspace',
+      },
+      {
+        value: 'delete',
+        label: '🗑️ Delete Project',
+        hint: 'Delete project locally or from GitHub',
+      }
+    );
   }
 
   actionOptions.push({
@@ -442,7 +710,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
   });
 
   if (p.isCancel(contextAction) || contextAction === 'back') {
-    return interactiveViewProjects(options);
+    return 'back';
   }
 
   if (contextAction === 'jump') {
@@ -468,7 +736,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
     if (webUrl) {
       p.note(`Repository URL: ${webUrl}`, 'GitHub Repository');
     }
-    return interactiveViewProjects(options);
+    return 'back';
   }
 
   if (contextAction === 'publish') {
@@ -489,7 +757,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
       pubSpinner.stop('Failed to publish project to GitHub.');
       p.log.error(err instanceof Error ? err.message : String(err));
     }
-    return interactiveViewProjects(options);
+    return 'back';
   }
 
   if (contextAction === 'checkpoint') {
@@ -515,12 +783,12 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
         p.log.error(err instanceof Error ? err.message : String(err));
       }
     }
-    return interactiveViewProjects(options);
+    return 'back';
   }
 
   if (contextAction === 'rollback') {
     await interactiveRollback(targetProject.path, options);
-    return interactiveViewProjects(options);
+    return 'back';
   }
 
   if (contextAction === 'graduate') {
@@ -537,7 +805,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
       gradSpinner.stop(`Failed to graduate "${targetProject.name}".`);
       p.log.error(err instanceof Error ? err.message : String(err));
     }
-    return interactiveViewProjects(options);
+    return 'back';
   }
 
   if (contextAction === 'extend') {
@@ -554,7 +822,99 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
       extSpinner.stop(`Failed to extend "${targetProject.name}".`);
       p.log.error(err instanceof Error ? err.message : String(err));
     }
-    return interactiveViewProjects(options);
+    return 'back';
+  }
+
+  if (contextAction === 'move') {
+    const moveOptions: Array<{ value: string; label: string; hint?: string }> = [];
+
+    if (targetProject.group) {
+      moveOptions.push({
+        value: '__root__',
+        label: '[Root] (Workspace Root)',
+        hint: 'Move project to top-level workspace root',
+      });
+    }
+
+    for (const g of allGroups) {
+      if (g.name !== targetProject.group) {
+        moveOptions.push({
+          value: g.name,
+          label: `📁 ${g.name}`,
+          hint: `Move to group "${g.name}"`,
+        });
+      }
+    }
+
+    moveOptions.push({
+      value: '__new_group__',
+      label: '➕ New group...',
+      hint: 'Create a new group and move project into it',
+    });
+
+    moveOptions.push({
+      value: '__cancel__',
+      label: pc.dim('↩ Cancel move'),
+      hint: '',
+    });
+
+    const selectedDest = await p.select({
+      message: `Select destination for "${targetProject.name}":`,
+      options: moveOptions,
+    });
+
+    if (p.isCancel(selectedDest) || selectedDest === '__cancel__') {
+      p.cancel('Move cancelled.');
+      return 'back';
+    }
+
+    let targetGroupName: string | null = null;
+
+    if (selectedDest === '__new_group__') {
+      const enteredGroupName = await p.text({
+        message: 'Enter new group name:',
+        placeholder: 'hackathons',
+        validate(val) {
+          if (!val || val.trim().length === 0) return 'Group name cannot be empty';
+          try {
+            validateGroupName(val.trim());
+          } catch (err: unknown) {
+            return err instanceof Error ? err.message : 'Invalid group name';
+          }
+        },
+      });
+
+      if (p.isCancel(enteredGroupName)) {
+        p.cancel('Move cancelled.');
+        return 'back';
+      }
+      targetGroupName = enteredGroupName.trim();
+    } else if (selectedDest === '__root__') {
+      targetGroupName = null;
+    } else {
+      targetGroupName = selectedDest as string;
+    }
+
+    const moveSpinner = p.spinner();
+    moveSpinner.start(
+      `Moving "${targetProject.name}" to ${targetGroupName ? `group "${targetGroupName}"` : 'root workspace'}...`
+    );
+
+    try {
+      const result = await moveProject(targetProject.path, targetGroupName, {
+        configDir: options?.configDir,
+        projectsRoot: config.projectsRoot,
+        throwawaysRoot: config.throwawaysRoot,
+      });
+      moveSpinner.stop(
+        `Successfully moved "${result.name}" to ${result.group ? `group "${result.group}"` : 'root workspace'}.`
+      );
+      p.note(`New Path: ${result.path}`, 'Project Moved');
+    } catch (err: unknown) {
+      moveSpinner.stop('Failed to move project.');
+      p.log.error(err instanceof Error ? err.message : String(err));
+    }
+    return 'back';
   }
 
   if (contextAction === 'delete') {
@@ -568,7 +928,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
         delSpinner.stop(`Failed to delete "${targetProject.name}".`);
         p.log.error(err instanceof Error ? err.message : String(err));
       }
-      return interactiveViewProjects(options);
+      return 'back';
     }
 
     let deleteCloud = false;
@@ -591,7 +951,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
 
       if (p.isCancel(deleteScope)) {
         p.cancel('Project deletion cancelled.');
-        return interactiveViewProjects(options);
+        return 'back';
       }
 
       deleteCloud = deleteScope === 'cloud';
@@ -604,7 +964,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
 
     if (p.isCancel(confirmed) || !confirmed) {
       p.cancel('Project deletion cancelled.');
-      return interactiveViewProjects(options);
+      return 'back';
     }
 
     let isDirty = targetProject.isDirty;
@@ -638,7 +998,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
 
       if (p.isCancel(confirmDirty) || !confirmDirty) {
         p.cancel('Project deletion cancelled.');
-        return interactiveViewProjects(options);
+        return 'back';
       }
     }
 
@@ -668,7 +1028,7 @@ export async function interactiveViewProjects(options?: TuiOptions): Promise<'ex
       p.log.error(err instanceof Error ? err.message : String(err));
     }
 
-    return interactiveViewProjects(options);
+    return 'back';
   }
 
   return 'back';
@@ -902,8 +1262,8 @@ export async function launchInteractiveDashboard(options?: TuiOptions): Promise<
       options: [
         {
           value: 'projects',
-          label: '📂 View & Jump to Projects',
-          hint: 'Browse repositories, jump (cd), open in editor, or manage checkpoints',
+          label: '📂 Project Organizer & Browser',
+          hint: 'Drill down into groups, browse repositories, jump (cd), or organize workspaces',
         },
         {
           value: 'new',

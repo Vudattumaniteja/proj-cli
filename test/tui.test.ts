@@ -89,9 +89,11 @@ describe('Clack TUI Dashboard & Interactive Wizards', () => {
   it('runs interactiveNewProject wizard to create project and emit code IPC token', async () => {
     // 1. Text prompt: project name
     vi.mocked(p.text).mockResolvedValueOnce('tui-created-app');
-    // 2. Select prompt: template
+    // 2. Select prompt: destination ([Root])
+    vi.mocked(p.select).mockResolvedValueOnce('__root__');
+    // 3. Select prompt: template
     vi.mocked(p.select).mockResolvedValueOnce('typescript');
-    // 3. Select prompt: next step
+    // 4. Select prompt: next step
     vi.mocked(p.select).mockResolvedValueOnce('code');
 
     const result = await interactiveNewProject({ configDir: tempDir });
