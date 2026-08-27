@@ -1,29 +1,59 @@
-# CONTEXT.md
+# Workspace & Project Lifecycle Management
 
-## Project Overview
-`proj-cli` (`proj`) is a high-performance TypeScript CLI tool designed for developer workspace management, project scaffolding, throwaway scratchpad lifecycle management, and a local Git safety net (milestone checkpoints, zero-loss rollbacks, emergency stashes) on Windows and cross-platform environments.
+Developer workspace management, project hierarchy, throwaway scratchpad lifecycle, and local Git safety net engine.
 
-## Core Concepts & Domain Model
-1. **Canonical Projects Root**: `C:\Users\<User>\projects` (or `~/projects` on POSIX). Holds all permanent Git-tracked projects.
-2. **Throwaways Root**: `C:\Users\<User>\projects\throwaways`. Holds time-boxed experimental scratchpads with configurable TTLs (e.g. 1, 3, 7 days).
-3. **Desktop Directory Junction**: `C:\Users\<User>\Desktop\Projects` -> `C:\Users\<User>\projects`. Provides zero-storage overhead Windows Explorer drag-and-drop access to workspace projects.
-4. **Configuration & State Directory**: `~/.proj/`
-   - `config.json`: Configuration options, custom settings, and throwaway scratchpad metadata.
-   - `ipc.json`: Ephemeral navigation tokens (`{ action: 'cd' | 'code' | 'none', targetPath: string, timestamp: number }`) consumed by PowerShell profile bridge.
-   - `templates/`: AI agent rules (`AGENTS.md`) and `.gitignore.default`.
-5. **Local Git Safety Engine**:
-   - `proj checkpoint [msg]`: Creates commit with prefix `checkpoint: <message>`.
-   - `proj undo [hash]`: Pre-creates safety stash `proj-safety-stash-<timestamp>` before resetting to prevent loss of uncommitted work.
-6. **Project Deletion Engine**:
-   - **Local Deletion**: Removes project directory from workspace, verifying dirty working tree state and requiring explicit confirmation.
-   - **Cloud Deletion**: Deletes remote GitHub repository using GitHub CLI (`gh repo delete --yes`), handling `delete_repo` OAuth scope authorization when required.
-7. **Cloud GitHub Publishing Engine**:
-   - Converts local project into a private GitHub repository matching the folder name using `gh repo create`.
-   - Automatically takes a safety checkpoint commit before initial push if working tree contains uncommitted files.
+## Language
 
-## Technology Stack
-- **Runtime**: Node.js >= 20 (ES2022 / NodeNext ESM)
-- **Language**: TypeScript (Strict Mode)
-- **Bundler**: `tsup` (generating standalone executable `dist/index.js` with shebang)
-- **Test Runner**: `vitest`
-- **CLI Utilities**: `commander`, `@clack/prompts`, `simple-git`, `execa`, `picocolors`
+### Workspace Hierarchy
+
+**Canonical Projects Root**:
+The primary directory (`~/projects` or `C:\Users\<User>\projects`) holding all permanent developer projects and project groups.
+_Avoid_: Workspace root, code folder, repo root
+
+**Project Group**:
+A 1-level category directory residing directly inside the Canonical Projects Root that groups related permanent projects together (e.g. `projects/hackathons/`).
+_Avoid_: Sub-project, category folder, sub-workspace, tag, nested repo
+
+**Standalone Project**:
+A permanent Git-tracked project repository located directly under the Canonical Projects Root without a parent group.
+_Avoid_: Root project, ungrouped project, top-level repo
+
+**Grouped Project**:
+A permanent Git-tracked project repository located inside a Project Group.
+_Avoid_: Sub-project, child project, nested project
+
+**Throwaways Root**:
+A dedicated directory (`~/projects/throwaways`) containing time-boxed experimental scratchpad projects with automated expiration.
+_Avoid_: Sandbox directory, temp folder, playground
+
+**Desktop Junction**:
+A zero-storage Windows directory junction linking the user's Desktop to the Canonical Projects Root for drag-and-drop workspace access.
+_Avoid_: Shortcut, symlink, desktop folder
+
+### Navigation & Discovery
+
+**Project Organizer**:
+The interactive drill-down explorer and management workflow for navigating, categorizing, creating, and relocating projects across groups.
+_Avoid_: File manager, workspace browser, project manager
+
+**Navigation Token**:
+An ephemeral IPC payload emitted by the CLI that instructs the parent shell profile bridge to execute terminal jumps (`cd`) or editor launches (`code`).
+_Avoid_: IPC command, shell trigger, jump signal
+
+### Git Safety Net & Lifecycle
+
+**Milestone Checkpoint**:
+An atomic save-game Git commit prefixed with `checkpoint:` created before risky code modifications or experiment spikes.
+_Avoid_: Quick commit, savepoint, snapshot
+
+**Safety Stash**:
+An automated Git stash (`proj-safety-stash-<timestamp>`) created before destructive rollback operations to prevent loss of uncommitted work.
+_Avoid_: Backup stash, emergency stash
+
+**Scratchpad**:
+A temporary, isolated project directory assigned a strict Time-to-Live (TTL) after which it is flagged for pruning or graduation.
+_Avoid_: Throwaway project, test repo, spike folder
+
+**Graduation**:
+The promotion of an active scratchpad from the Throwaways Root into a permanent Standalone Project or Grouped Project.
+_Avoid_: Project promotion, scratchpad export, permanent conversion

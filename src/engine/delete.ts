@@ -3,7 +3,7 @@ import path from 'node:path';
 import { simpleGit } from 'simple-git';
 import { execa } from 'execa';
 import { getConfig, updateConfig } from '../config/index.js';
-import { parseGitHubRemote } from './discovery.js';
+import { parseGitHubRemote, RESERVED_FOLDER_NAMES, resolveProject } from './discovery.js';
 import { findThrowawayEntry } from './throwaway.js';
 import type { DeleteProjectOptions, DeleteProjectResult } from './types.js';
 
@@ -11,7 +11,8 @@ export * from './types.js';
 
 /**
  * Safely deletes a project from disk, checking for uncommitted changes,
- * and optionally deletes the remote GitHub repository via the GitHub CLI (`gh`).
+ * auto-pruning empty parent group folders, and optionally deletes the remote
+ * GitHub repository via the GitHub CLI (`gh`).
  */
 export async function deleteProject(
   target: string,
@@ -54,24 +55,31 @@ export async function deleteProject(
       throw new Error(`Cannot locate project "${trimmed}": Project directory not found at "${resolved}"`);
     }
   } else {
-    // 2. Check canonical workspace root
-    const canonicalCandidate = path.join(projectsRoot, trimmed);
-    if (fs.existsSync(canonicalCandidate) && fs.statSync(canonicalCandidate).isDirectory()) {
-      projectPath = canonicalCandidate;
-    }
+    // 2. Use resolveProject to look across root, groups, and throwaways
+    const resolveResult = await resolveProject(trimmed, projectsRoot, {
+      configDir: options?.configDir,
+      throwawaysRoot,
+    });
 
-    // 3. Check throwaways root
-    if (!projectPath && throwawaysRoot) {
-      const throwawaysCandidate = path.join(throwawaysRoot, trimmed);
-      if (fs.existsSync(throwawaysCandidate) && fs.statSync(throwawaysCandidate).isDirectory()) {
-        projectPath = throwawaysCandidate;
+    if (resolveResult.resolved && resolveResult.targetPath) {
+      if (resolveResult.type === 'group') {
+        if (resolveResult.group && resolveResult.group.projectCount > 0) {
+          throw new Error(`Cannot locate project "${trimmed}": Target is a group folder, not a project`);
+        }
+        projectPath = resolveResult.targetPath;
+      } else {
+        projectPath = resolveResult.targetPath;
       }
+    } else if (resolveResult.isAmbiguous) {
+      const matchPaths = resolveResult.ambiguousMatches.map((m) => m.path).join(', ');
+      throw new Error(
+        `Ambiguous project name "${trimmed}". Found multiple matching projects across groups: ${matchPaths}`
+      );
     }
 
-    // 4. Check throwaways registry in config
-    if (!projectPath) {
-      const throwaways = config.throwaways || {};
-      const found = findThrowawayEntry(throwaways, trimmed);
+    // 3. Fallback: check throwaways registry in config
+    if (!projectPath && config.throwaways) {
+      const found = findThrowawayEntry(config.throwaways, trimmed);
       if (
         found?.record?.path &&
         fs.existsSync(found.record.path) &&
@@ -81,7 +89,7 @@ export async function deleteProject(
       }
     }
 
-    // 5. Fallback check for relative path
+    // 4. Fallback: check relative path from cwd
     if (!projectPath) {
       const relativeCandidate = path.resolve(trimmed);
       if (fs.existsSync(relativeCandidate) && fs.statSync(relativeCandidate).isDirectory()) {
@@ -98,7 +106,7 @@ export async function deleteProject(
 
   const projectName = path.basename(projectPath);
 
-  // 6. Check Git status and uncommitted changes
+  // 5. Check Git status and uncommitted changes
   const gitDir = path.join(projectPath, '.git');
   let isRepo = false;
   const git = simpleGit(projectPath, { maxConcurrentProcesses: 2 });
@@ -121,7 +129,7 @@ export async function deleteProject(
     }
   }
 
-  // 7. If cloud: true, delete remote repository via GitHub CLI
+  // 6. If cloud: true, delete remote repository via GitHub CLI
   let cloudDeleted = false;
   if (options?.cloud) {
     if (!isRepo) {
@@ -170,8 +178,33 @@ export async function deleteProject(
     }
   }
 
-  // 8. Permanently remove project directory from disk
+  // 7. Permanently remove project directory from disk
   fs.rmSync(projectPath, { recursive: true, force: true });
+
+  // 8. Auto-prune empty parent group folder if project was inside a 1-level group folder
+  let groupPruned = false;
+  let prunedGroup: string | undefined = undefined;
+
+  const parentDir = path.dirname(projectPath);
+  if (
+    path.resolve(path.dirname(parentDir)) === path.resolve(projectsRoot) &&
+    path.resolve(parentDir) !== path.resolve(projectsRoot) &&
+    path.resolve(parentDir) !== path.resolve(throwawaysRoot)
+  ) {
+    const groupName = path.basename(parentDir);
+    if (!RESERVED_FOLDER_NAMES.has(groupName.toLowerCase()) && fs.existsSync(parentDir)) {
+      try {
+        const remainingEntries = fs.readdirSync(parentDir);
+        if (remainingEntries.length === 0) {
+          fs.rmSync(parentDir, { recursive: true, force: true });
+          groupPruned = true;
+          prunedGroup = groupName;
+        }
+      } catch {
+        // Ignore read/rm error on parent directory
+      }
+    }
+  }
 
   // 9. Clean up throwaway registry in config if present
   if (config.throwaways) {
@@ -190,5 +223,6 @@ export async function deleteProject(
     name: projectName,
     path: projectPath,
     cloudDeleted,
+    ...(groupPruned ? { groupPruned: true, prunedGroup } : {}),
   };
 }

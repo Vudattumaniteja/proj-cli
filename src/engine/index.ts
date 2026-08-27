@@ -6,5 +6,6 @@ export * from './doctor.js';
 export * from './adopt.js';
 export * from './publish.js';
 export * from './delete.js';
+export * from './organize.js';
 export * from './types.js';
 

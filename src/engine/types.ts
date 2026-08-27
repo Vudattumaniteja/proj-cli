@@ -54,10 +54,12 @@ export interface ScaffoldOptions {
   configDir?: string;
   gitAuthorName?: string;
   gitAuthorEmail?: string;
+  group?: string;
 }
 
 export interface ScaffoldResult {
   name: string;
+  group?: string;
   path: string;
   template: ProjectTemplate;
   commitHash: string;
@@ -192,5 +194,33 @@ export interface DeleteProjectResult {
   name: string;
   path: string;
   cloudDeleted: boolean;
+  groupPruned?: boolean;
+  prunedGroup?: string;
+}
+
+export interface OrganizeOptions {
+  configDir?: string;
+  projectsRoot?: string;
+  throwawaysRoot?: string;
+}
+
+export interface MoveProjectResult {
+  name: string;
+  path: string;
+  previousPath: string;
+  group?: string;
+  previousGroup?: string;
+}
+
+export interface DeleteGroupOptions {
+  force?: boolean;
+  configDir?: string;
+  projectsRoot?: string;
+}
+
+export interface DeleteGroupResult {
+  name: string;
+  path: string;
+  deleted: boolean;
 }
 
