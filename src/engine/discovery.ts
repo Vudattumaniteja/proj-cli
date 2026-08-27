@@ -759,9 +759,6 @@ export function formatProjectsJson(projects: ProjectInfo[]): string {
   return JSON.stringify(projects, null, 2);
 }
 
-/**
- * Formats projects list as a clean non-interactive tabular string.
- */
 export function formatProjectsTable(projects: ProjectInfo[]): string {
   if (projects.length === 0) {
     return 'No projects found.';
@@ -791,6 +788,8 @@ export function formatProjectsTable(projects: ProjectInfo[]): string {
       status,
       date: dateStr,
       path: p.path,
+      group: p.group,
+      isThrowaway: p.isThrowaway,
     };
   });
 
@@ -806,11 +805,64 @@ export function formatProjectsTable(projects: ProjectInfo[]): string {
   const header = `${pad('NAME', colName)}  ${pad('TEMPLATE', colBadge)}  ${pad('BRANCH', colBranch)}  ${pad('STATUS', colStatus)}  ${pad('LAST MODIFIED', colDate)}  PATH`;
   const separator = `${'-'.repeat(colName)}  ${'-'.repeat(colBadge)}  ${'-'.repeat(colBranch)}  ${'-'.repeat(colStatus)}  ${'-'.repeat(colDate)}  ${'-'.repeat(4)}`;
 
-  const lines = [header, separator];
+  // Organize rows by section:
+  // 1. Grouped projects (sorted alphabetically by group name)
+  // 2. Root standalone projects ([root])
+  // 3. Throwaway scratchpads ([throwaways])
+  const sections: { title: string; rows: typeof rows }[] = [];
+
+  const groupsMap = new Map<string, typeof rows>();
+  const rootRows: typeof rows = [];
+  const throwawayRows: typeof rows = [];
+
   for (const r of rows) {
-    lines.push(
-      `${pad(r.name, colName)}  ${pad(r.badge, colBadge)}  ${pad(r.branch, colBranch)}  ${pad(r.status, colStatus)}  ${pad(r.date, colDate)}  ${r.path}`
-    );
+    if (r.isThrowaway) {
+      throwawayRows.push(r);
+    } else if (r.group) {
+      if (!groupsMap.has(r.group)) {
+        groupsMap.set(r.group, []);
+      }
+      groupsMap.get(r.group)!.push(r);
+    } else {
+      rootRows.push(r);
+    }
+  }
+
+  const sortedGroups = Array.from(groupsMap.keys()).sort((a, b) => a.localeCompare(b));
+  for (const g of sortedGroups) {
+    sections.push({
+      title: `[${g}]`,
+      rows: groupsMap.get(g)!,
+    });
+  }
+
+  if (rootRows.length > 0) {
+    sections.push({
+      title: '[root]',
+      rows: rootRows,
+    });
+  }
+
+  if (throwawayRows.length > 0) {
+    sections.push({
+      title: '[throwaways]',
+      rows: throwawayRows,
+    });
+  }
+
+  const lines = [header, separator];
+
+  for (let i = 0; i < sections.length; i++) {
+    if (i > 0) {
+      lines.push('');
+    }
+    const sec = sections[i];
+    lines.push(sec.title);
+    for (const r of sec.rows) {
+      lines.push(
+        `${pad(r.name, colName)}  ${pad(r.badge, colBadge)}  ${pad(r.branch, colBranch)}  ${pad(r.status, colStatus)}  ${pad(r.date, colDate)}  ${r.path}`
+      );
+    }
   }
 
   return lines.join('\n');

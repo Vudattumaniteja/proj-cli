@@ -31,6 +31,8 @@ import {
   adoptProject,
   deleteProject,
   publishProject,
+  moveProject,
+  resolveProject,
   SUPPORTED_TEMPLATES,
   type ProjectTemplate,
 } from './engine/index.js';
@@ -84,30 +86,37 @@ export function createProgram(): Command {
       `Starter template (${SUPPORTED_TEMPLATES.join(', ')})`,
       'minimal'
     )
+    .option('-g, --group <group>', 'Target project group')
     .option('-i, --interactive', 'Run interactive template wizard')
-    .action(async (name?: string, options: { template?: string; interactive?: boolean } = {}) => {
-      if (!name || options.interactive) {
-        if (process.stdin.isTTY || options.interactive) {
-          await interactiveNewProject({ initialName: name });
+    .action(
+      async (
+        name?: string,
+        options: { template?: string; group?: string; interactive?: boolean } = {}
+      ) => {
+        if (!name || options.interactive) {
+          if (process.stdin.isTTY || options.interactive) {
+            await interactiveNewProject({ initialName: name });
+            return;
+          }
+          process.stderr.write('Error: Missing required argument <name>\n');
+          process.exitCode = 1;
           return;
         }
-        process.stderr.write('Error: Missing required argument <name>\n');
-        process.exitCode = 1;
-        return;
-      }
 
-      const template = (options.template || 'minimal') as ProjectTemplate;
-      const config = getConfig();
-      try {
-        const result = await scaffoldProject(name, template, {
-          parentDir: config.projectsRoot,
-        });
-        process.stdout.write(`Successfully created project "${result.name}" at ${result.path}\n`);
-      } catch (err: unknown) {
-        process.stderr.write(`Error: ${(err as Error).message}\n`);
-        process.exitCode = 1;
+        const template = (options.template || 'minimal') as ProjectTemplate;
+        const config = getConfig();
+        try {
+          const result = await scaffoldProject(name, template, {
+            parentDir: config.projectsRoot,
+            group: options.group,
+          });
+          process.stdout.write(`Successfully created project "${result.name}" at ${result.path}\n`);
+        } catch (err: unknown) {
+          process.stderr.write(`Error: ${(err as Error).message}\n`);
+          process.exitCode = 1;
+        }
       }
-    });
+    );
 
   program
     .command('list')
@@ -398,37 +407,40 @@ export function createProgram(): Command {
   program
     .command('cd [name]')
     .alias('jump')
-    .description('Emit IPC token to navigate shell to target workspace project, throwaway, or workspace root')
+    .description('Emit IPC token to navigate shell to target workspace project, group, throwaway, or workspace root')
     .action(async (name?: string) => {
       try {
         const config = getConfig();
-        if (!name) {
+        if (!name || !name.trim()) {
           emitIpcToken('cd', config.projectsRoot);
           process.stdout.write(`Jumping to workspace root at ${config.projectsRoot}\n`);
           return;
         }
 
-        const candidate1 = path.join(config.projectsRoot, name);
-        const candidate2 = path.join(config.throwawaysRoot, name);
-        const candidate3 = path.resolve(name);
+        const trimmed = name.trim();
+        const resolveResult = await resolveProject(trimmed, config.projectsRoot, {
+          throwawaysRoot: config.throwawaysRoot,
+        });
 
-        let targetPath: string | null = null;
-        if (fs.existsSync(candidate1)) {
-          targetPath = candidate1;
-        } else if (fs.existsSync(candidate2)) {
-          targetPath = candidate2;
-        } else if (fs.existsSync(candidate3)) {
-          targetPath = candidate3;
+        if (resolveResult.resolved && resolveResult.targetPath) {
+          emitIpcToken('cd', resolveResult.targetPath);
+          process.stdout.write(`Jumping to project "${trimmed}" at ${resolveResult.targetPath}\n`);
+          return;
         }
 
-        if (!targetPath) {
-          process.stderr.write(`Error: Project "${name}" not found in workspace\n`);
+        if (resolveResult.isAmbiguous) {
+          const matchPaths = resolveResult.ambiguousMatches
+            .map((m) => (m.group ? `${m.group}/${m.name} (${m.path})` : `${m.name} (${m.path})`))
+            .join(', ');
+          process.stderr.write(
+            `Error: Ambiguous project name "${trimmed}". Found ${resolveResult.ambiguousMatches.length} matching projects: ${matchPaths}\n`
+          );
           process.exitCode = 1;
           return;
         }
 
-        emitIpcToken('cd', targetPath);
-        process.stdout.write(`Jumping to project "${name}" at ${targetPath}\n`);
+        process.stderr.write(`Error: Project "${trimmed}" not found in workspace\n`);
+        process.exitCode = 1;
       } catch (err: unknown) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
@@ -437,38 +449,70 @@ export function createProgram(): Command {
 
   program
     .command('code [name]')
-    .description('Emit IPC token to open target workspace project or current directory in VS Code')
+    .description('Emit IPC token to open target workspace project, group, or current directory in VS Code')
     .action(async (name?: string) => {
       try {
-        if (!name) {
+        if (!name || !name.trim()) {
           const currentDir = process.cwd();
           emitIpcToken('code', currentDir);
           process.stdout.write(`Opening current directory in VS Code at ${currentDir}\n`);
           return;
         }
 
+        const trimmed = name.trim();
         const config = getConfig();
-        const candidate1 = path.join(config.projectsRoot, name);
-        const candidate2 = path.join(config.throwawaysRoot, name);
-        const candidate3 = path.resolve(name);
+        const resolveResult = await resolveProject(trimmed, config.projectsRoot, {
+          throwawaysRoot: config.throwawaysRoot,
+        });
 
-        let targetPath: string | null = null;
-        if (fs.existsSync(candidate1)) {
-          targetPath = candidate1;
-        } else if (fs.existsSync(candidate2)) {
-          targetPath = candidate2;
-        } else if (fs.existsSync(candidate3)) {
-          targetPath = candidate3;
+        if (resolveResult.resolved && resolveResult.targetPath) {
+          emitIpcToken('code', resolveResult.targetPath);
+          process.stdout.write(
+            `Opening project "${trimmed}" in VS Code at ${resolveResult.targetPath}\n`
+          );
+          return;
         }
 
-        if (!targetPath) {
-          process.stderr.write(`Error: Project "${name}" not found in workspace\n`);
+        if (resolveResult.isAmbiguous) {
+          const matchPaths = resolveResult.ambiguousMatches
+            .map((m) => (m.group ? `${m.group}/${m.name} (${m.path})` : `${m.name} (${m.path})`))
+            .join(', ');
+          process.stderr.write(
+            `Error: Ambiguous project name "${trimmed}". Found ${resolveResult.ambiguousMatches.length} matching projects: ${matchPaths}\n`
+          );
           process.exitCode = 1;
           return;
         }
 
-        emitIpcToken('code', targetPath);
-        process.stdout.write(`Opening project "${name}" in VS Code at ${targetPath}\n`);
+        process.stderr.write(`Error: Project "${trimmed}" not found in workspace\n`);
+        process.exitCode = 1;
+      } catch (err: unknown) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command('move <project> <target-group>')
+    .alias('mv')
+    .description('Relocate a project between root workspace and group subfolders')
+    .action(async (project: string, targetGroup: string) => {
+      try {
+        const config = getConfig();
+        const result = await moveProject(project, targetGroup, {
+          projectsRoot: config.projectsRoot,
+          throwawaysRoot: config.throwawaysRoot,
+        });
+
+        if (result.group) {
+          process.stdout.write(
+            `Successfully moved project "${result.name}" to group "${result.group}" (${result.path})\n`
+          );
+        } else {
+          process.stdout.write(
+            `Successfully moved project "${result.name}" to root workspace (${result.path})\n`
+          );
+        }
       } catch (err: unknown) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
         process.exitCode = 1;
