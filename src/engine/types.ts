@@ -18,6 +18,26 @@ export interface ProjectInfo {
     repo: string;
     webUrl: string;
   };
+  group?: string;
+}
+
+export interface GroupInfo {
+  name: string;
+  path: string;
+  projectCount: number;
+  projects: ProjectInfo[];
+}
+
+export type ResolvedTargetType = 'project' | 'group' | 'throwaway' | 'directory';
+
+export interface ResolveProjectResult {
+  resolved: boolean;
+  targetPath: string | null;
+  type?: ResolvedTargetType;
+  project?: ProjectInfo;
+  group?: GroupInfo;
+  isAmbiguous: boolean;
+  ambiguousMatches: ProjectInfo[];
 }
 
 export type ProjectTemplate = 'minimal' | 'typescript' | 'python' | 'web';
