@@ -68,38 +68,49 @@ export async function createThrowaway(
   // Create throwaway project directory
   fs.mkdirSync(projectPath, { recursive: true });
 
-  // Generate starter files based on chosen template
-  generateTemplateFiles(projectPath, trimmedName, resolvedTemplate, {
-    configDir: options?.configDir,
-  });
+  try {
+    // Generate starter files based on chosen template
+    generateTemplateFiles(projectPath, trimmedName, resolvedTemplate, {
+      configDir: options?.configDir,
+    });
 
-  // Calculate timestamps
-  const now = options?.now ? new Date(options.now) : new Date();
-  const createdAt = now.toISOString();
-  const expiresAt = new Date(now.getTime() + resolvedTtl * 24 * 60 * 60 * 1000).toISOString();
+    // Calculate timestamps
+    const now = options?.now ? new Date(options.now) : new Date();
+    const createdAt = now.toISOString();
+    const expiresAt = new Date(now.getTime() + resolvedTtl * 24 * 60 * 60 * 1000).toISOString();
 
-  const record: ThrowawayRecord = {
-    name: trimmedName,
-    path: projectPath,
-    createdAt,
-    expiresAt,
-    ttlDays: resolvedTtl,
-    template: resolvedTemplate,
-  };
+    const record: ThrowawayRecord = {
+      name: trimmedName,
+      path: projectPath,
+      createdAt,
+      expiresAt,
+      ttlDays: resolvedTtl,
+      template: resolvedTemplate,
+    };
 
-  // Register in config.json
-  const existingThrowaways = config.throwaways || {};
-  updateConfig(
-    {
-      throwaways: {
-        ...existingThrowaways,
-        [trimmedName]: record,
+    // Register in config.json
+    const existingThrowaways = config.throwaways || {};
+    updateConfig(
+      {
+        throwaways: {
+          ...existingThrowaways,
+          [trimmedName]: record,
+        },
       },
-    },
-    { configDir: options?.configDir }
-  );
+      { configDir: options?.configDir }
+    );
 
-  return record;
+    return record;
+  } catch (err) {
+    if (fs.existsSync(projectPath)) {
+      try {
+        fs.rmSync(projectPath, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup error
+      }
+    }
+    throw err;
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -59,6 +59,100 @@ describe('Project Scaffolding Engine', () => {
           scaffoldProject(name, 'minimal', { parentDir: projectsDir, configDir })
         ).rejects.toThrow(/invalid project name/i);
       }
+    });
+
+    it('rejects project names and group names ending with a period', async () => {
+      const namesWithTrailingPeriod = [
+        'blood-report-Analysis.',
+        'my-app.',
+        'trailing-dot-test.',
+      ];
+
+      for (const name of namesWithTrailingPeriod) {
+        await expect(
+          scaffoldProject(name, 'minimal', { parentDir: projectsDir, configDir })
+        ).rejects.toThrow(/cannot end with a period/i);
+      }
+
+      // Group name ending with a period
+      await expect(
+        scaffoldProject('my-app', 'minimal', {
+          parentDir: projectsDir,
+          configDir,
+          group: 'invalid-group.',
+        })
+      ).rejects.toThrow(/cannot end with a period/i);
+
+      await expect(
+        scaffoldProject('invalid-group./my-app', 'minimal', {
+          parentDir: projectsDir,
+          configDir,
+        })
+      ).rejects.toThrow(/cannot end with a period/i);
+    });
+
+    it('allows project names with dots in the middle', async () => {
+      const result = await scaffoldProject('blood-report-analysis.v1', 'minimal', {
+        parentDir: projectsDir,
+        configDir,
+      });
+
+      expect(result.name).toBe('blood-report-analysis.v1');
+      expect(fs.existsSync(result.path)).toBe(true);
+    });
+
+    it('rejects Windows reserved system device names', async () => {
+      const reservedNames = ['con', 'prn', 'aux', 'nul', 'com1', 'com9', 'lpt1', 'lpt9', 'aux.txt', 'CON.app'];
+
+      for (const name of reservedNames) {
+        await expect(
+          scaffoldProject(name, 'minimal', { parentDir: projectsDir, configDir })
+        ).rejects.toThrow(/reserved system device name/i);
+      }
+
+      // As group name
+      await expect(
+        scaffoldProject('valid-app', 'minimal', {
+          parentDir: projectsDir,
+          configDir,
+          group: 'aux',
+        })
+      ).rejects.toThrow(/reserved system device name/i);
+    });
+
+    it('rejects reserved folder names as project name', async () => {
+      const reservedFolders = ['throwaways', '.git', '.proj', 'node_modules', 'dist'];
+
+      for (const name of reservedFolders) {
+        await expect(
+          scaffoldProject(name, 'minimal', { parentDir: projectsDir, configDir })
+        ).rejects.toThrow(/reserved directory name/i);
+      }
+    });
+
+    it('cleans up partially created project directory if file generation fails', async () => {
+      let callCount = 0;
+      const originalWriteFileSync = fs.writeFileSync;
+      const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation((
+        filePath: fs.PathOrFileDescriptor,
+        data: string | NodeJS.ArrayBufferView,
+        options?: fs.WriteFileOptions
+      ) => {
+        callCount++;
+        if (callCount >= 2) {
+          throw new Error('Disk write failure during scaffolding');
+        }
+        return originalWriteFileSync(filePath, data, options as fs.WriteFileOptions);
+      });
+
+      const targetPath = path.join(projectsDir, 'failed-project');
+
+      await expect(
+        scaffoldProject('failed-project', 'minimal', { parentDir: projectsDir, configDir })
+      ).rejects.toThrow('Disk write failure during scaffolding');
+
+      expect(fs.existsSync(targetPath)).toBe(false);
+      writeSpy.mockRestore();
     });
 
     it('rejects multi-level nested group paths beyond 1 level', async () => {

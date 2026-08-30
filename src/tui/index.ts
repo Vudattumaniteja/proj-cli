@@ -18,6 +18,7 @@ import {
   createGroup,
   moveProject,
   validateGroupName,
+  validateProjectName,
   scaffoldProject,
   createThrowaway,
   checkExpiredThrowaways,
@@ -62,8 +63,22 @@ export async function interactiveNewProject(
         if (!val || val.trim().length === 0) {
           return 'Project name cannot be empty';
         }
-        if (/[/\\:*?"<>|]/.test(val.trim())) {
-          return 'Project name contains invalid characters';
+        try {
+          const normalized = val.trim().replace(/\\/g, '/');
+          if (normalized.includes('/')) {
+            const parts = normalized.split('/').filter(Boolean);
+            if (parts.length > 2) {
+              return 'Multi-level nested groups beyond 1 level are not supported';
+            }
+            if (parts.length === 2) {
+              validateGroupName(parts[0]);
+              validateProjectName(parts[1]);
+              return;
+            }
+          }
+          validateProjectName(val.trim());
+        } catch (err: unknown) {
+          return err instanceof Error ? err.message : 'Invalid project name';
         }
       },
     });
@@ -224,8 +239,10 @@ export async function interactiveThrowaway(
         if (!val || val.trim().length === 0) {
           return 'Scratchpad name cannot be empty';
         }
-        if (/[/\\:*?"<>|]/.test(val.trim())) {
-          return 'Scratchpad name contains invalid characters';
+        try {
+          validateProjectName(val.trim());
+        } catch (err: unknown) {
+          return err instanceof Error ? err.message : 'Invalid scratchpad name';
         }
       },
     });

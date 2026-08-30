@@ -19,6 +19,8 @@ import { RESERVED_FOLDER_NAMES } from './discovery.js';
 
 export * from './types.js';
 
+export const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+
 /**
  * Validates group name format and prevents path traversal / invalid chars / reserved folders.
  */
@@ -32,10 +34,20 @@ export function validateGroupName(group: string): void {
     throw new Error(`Invalid group name "${group}": cannot be "." or ".."`);
   }
 
+  if (trimmed.endsWith('.')) {
+    throw new Error(`Invalid group name "${group}": cannot end with a period`);
+  }
+
   const invalidCharRegex = /[/\\:*?"<>|]/;
   if (invalidCharRegex.test(trimmed)) {
     throw new Error(
       `Invalid group name "${group}": contains forbidden characters (/ \\ : * ? " < > |)`
+    );
+  }
+
+  if (WINDOWS_RESERVED_NAMES.test(trimmed)) {
+    throw new Error(
+      `Invalid group name "${group}": "${trimmed}" is a reserved system device name`
     );
   }
 
@@ -47,7 +59,7 @@ export function validateGroupName(group: string): void {
 }
 
 /**
- * Validates project name format and prevents path traversal / invalid chars.
+ * Validates project name format and prevents path traversal / invalid chars / trailing dots / reserved names.
  */
 export function validateProjectName(name: string): void {
   if (typeof name !== 'string' || name.trim() === '') {
@@ -59,11 +71,27 @@ export function validateProjectName(name: string): void {
     throw new Error(`Invalid project name "${name}": cannot be "." or ".."`);
   }
 
+  if (trimmed.endsWith('.')) {
+    throw new Error(`Invalid project name "${name}": cannot end with a period`);
+  }
+
   // Check for forbidden filesystem characters
   const invalidCharRegex = /[/\\:*?"<>|]/;
   if (invalidCharRegex.test(trimmed)) {
     throw new Error(
       `Invalid project name "${name}": contains forbidden characters (/ \\ : * ? " < > |)`
+    );
+  }
+
+  if (WINDOWS_RESERVED_NAMES.test(trimmed)) {
+    throw new Error(
+      `Invalid project name "${name}": "${trimmed}" is a reserved system device name`
+    );
+  }
+
+  if (RESERVED_FOLDER_NAMES.has(trimmed.toLowerCase())) {
+    throw new Error(
+      `Invalid project name "${name}": "${name}" is a reserved directory name`
     );
   }
 }
@@ -327,36 +355,58 @@ export async function scaffoldProject(
   }
 
   // Ensure target group directory / parent directory exists
-  if (!fs.existsSync(targetGroupDir)) {
+  const groupExistedBefore = fs.existsSync(targetGroupDir);
+  if (!groupExistedBefore) {
     fs.mkdirSync(targetGroupDir, { recursive: true });
   }
 
   // Create project directory
   fs.mkdirSync(projectPath, { recursive: true });
 
-  // Generate template files
-  const files = generateTemplateFiles(projectPath, projectName, template, options);
+  try {
+    // Generate template files
+    const files = generateTemplateFiles(projectPath, projectName, template, options);
 
-  // Initialize local Git repository and create snapshot commit
-  const git = simpleGit(projectPath, { maxConcurrentProcesses: 2 });
-  await git.init();
+    // Initialize local Git repository and create snapshot commit
+    const git = simpleGit(projectPath, { maxConcurrentProcesses: 2 });
+    await git.init();
 
-  // Configure local user info if needed to guarantee commit creation across all environments
-  await git.addConfig('user.name', options?.gitAuthorName || 'proj-agent', false, 'local');
-  await git.addConfig('user.email', options?.gitAuthorEmail || 'agent@proj.local', false, 'local');
+    // Configure local user info if needed to guarantee commit creation across all environments
+    await git.addConfig('user.name', options?.gitAuthorName || 'proj-agent', false, 'local');
+    await git.addConfig('user.email', options?.gitAuthorEmail || 'agent@proj.local', false, 'local');
 
-  // Stage and commit all files
-  await git.add('.');
-  await git.commit('checkpoint: Initial commit with agent guardrails & gitignore');
+    // Stage and commit all files
+    await git.add('.');
+    await git.commit('checkpoint: Initial commit with agent guardrails & gitignore');
 
-  const commitHash = (await git.revparse(['HEAD'])).trim();
+    const commitHash = (await git.revparse(['HEAD'])).trim();
 
-  return {
-    name: projectName,
-    ...(group ? { group } : {}),
-    path: projectPath,
-    template,
-    commitHash,
-    files,
-  };
+    return {
+      name: projectName,
+      ...(group ? { group } : {}),
+      path: projectPath,
+      template,
+      commitHash,
+      files,
+    };
+  } catch (err: unknown) {
+    if (fs.existsSync(projectPath)) {
+      try {
+        fs.rmSync(projectPath, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup error during failure
+      }
+    }
+    if (!groupExistedBefore && fs.existsSync(targetGroupDir)) {
+      try {
+        const remaining = fs.readdirSync(targetGroupDir);
+        if (remaining.length === 0) {
+          fs.rmdirSync(targetGroupDir);
+        }
+      } catch {
+        // Ignore cleanup error
+      }
+    }
+    throw err;
+  }
 }
