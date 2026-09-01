@@ -57,3 +57,18 @@ _Avoid_: Throwaway project, test repo, spike folder
 **Graduation**:
 The promotion of an active scratchpad from the Throwaways Root into a permanent Standalone Project or Grouped Project.
 _Avoid_: Project promotion, scratchpad export, permanent conversion
+
+### Self-Update & Version Lifecycle
+
+**Self-Update Engine**:
+The subsystem responsible for detecting remote releases, caching check timestamps, and applying CLI package updates.
+_Avoid_: Auto-updater, package updater, patcher
+
+**Update Check Interval**:
+The configured cache duration (default: 24 hours) between background queries to GitHub for newer versions.
+_Avoid_: Poll interval, update frequency, refresh rate
+
+**Update Notification**:
+The non-blocking notification displayed after command execution or in the TUI banner when a newer version is detected upstream.
+_Avoid_: Update alert, upgrade warning, popup
+

@@ -103,6 +103,59 @@ describe('Cloud GitHub Publishing Engine (publishProject)', () => {
       expect(result.repoUrl).toBe('https://github.com/testuser/scratch-idea.git');
     });
 
+    it('locates and publishes a project located inside a group folder using group/name syntax', async () => {
+      const groupDir = path.join(canonicalProjects, 'hackathons');
+      const projectDir = path.join(groupDir, 'agent-bot');
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, 'index.ts'), 'console.log("bot");');
+
+      const result = await publishProject('hackathons/agent-bot', {
+        configDir,
+        projectsRoot: canonicalProjects,
+        throwawaysRoot,
+      });
+
+      expect(result.name).toBe('agent-bot');
+      expect(result.path).toBe(projectDir);
+      expect(result.isPrivate).toBe(true);
+      expect(result.repoUrl).toBe('https://github.com/testuser/agent-bot.git');
+    });
+
+    it('locates and publishes a project located inside a group folder using unqualified name', async () => {
+      const groupDir = path.join(canonicalProjects, 'web-mcp');
+      const projectDir = path.join(groupDir, 'mcp-server');
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, 'package.json'), '{}');
+
+      const result = await publishProject('mcp-server', {
+        configDir,
+        projectsRoot: canonicalProjects,
+        throwawaysRoot,
+      });
+
+      expect(result.name).toBe('mcp-server');
+      expect(result.path).toBe(projectDir);
+      expect(result.isPrivate).toBe(true);
+      expect(result.repoUrl).toBe('https://github.com/testuser/mcp-server.git');
+    });
+
+    it('throws a descriptive ambiguity error when target project name exists across multiple groups', async () => {
+      const group1Dir = path.join(canonicalProjects, 'group-a', 'shared-app');
+      const group2Dir = path.join(canonicalProjects, 'group-b', 'shared-app');
+      fs.mkdirSync(group1Dir, { recursive: true });
+      fs.mkdirSync(group2Dir, { recursive: true });
+      fs.writeFileSync(path.join(group1Dir, 'index.ts'), '// a');
+      fs.writeFileSync(path.join(group2Dir, 'index.ts'), '// b');
+
+      await expect(
+        publishProject('shared-app', {
+          configDir,
+          projectsRoot: canonicalProjects,
+          throwawaysRoot,
+        })
+      ).rejects.toThrow(/Ambiguous project name "shared-app"/i);
+    });
+
     it('locates and publishes a project via relative path', async () => {
       const externalDir = path.join(tempRoot, 'external-dir');
       fs.mkdirSync(externalDir);

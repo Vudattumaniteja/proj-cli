@@ -262,6 +262,31 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
       expect(gitCheck?.status).toBe('error');
       expect(gitCheck?.message).toContain('not found');
     });
+
+    it('detects outdated npm global shim when npmShimPath is explicitly configured', async () => {
+      ensureConfigDirs({ configDir: customConfigDir });
+      writePowerShellWrapper(undefined, { configDir: customConfigDir });
+      writeCmdWrapper(undefined, { configDir: customConfigDir });
+      repairJunction(customDesktopJunction, customProjectsRoot);
+
+      const fakeShimDir = path.join(tempDir, 'npm');
+      fs.mkdirSync(fakeShimDir, { recursive: true });
+      const fakeShimPath = path.join(fakeShimDir, 'proj.cmd');
+      fs.writeFileSync(fakeShimPath, '@ECHO off\nnode "%~dp0\\node_modules\\proj-cli\\dist\\index.js" %*\n', 'utf8');
+
+      const report = await runDoctor({
+        configDir: customConfigDir,
+        projectsRoot: customProjectsRoot,
+        throwawaysRoot: customThrowawaysRoot,
+        desktopJunctionPath: customDesktopJunction,
+        npmShimPath: fakeShimPath,
+      });
+
+      expect(report.allOk).toBe(false);
+      const ipcCheck = report.checks.find((c) => c.id === 'ipc');
+      expect(ipcCheck?.status).toBe('warning');
+      expect(ipcCheck?.message).toContain('outdated IPC interceptor');
+    });
   });
 
   describe('fixDoctorIssues()', () => {
@@ -320,6 +345,37 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
 
       const healedConfig = JSON.parse(fs.readFileSync(path.join(corruptConfigDir, 'config.json'), 'utf8'));
       expect(healedConfig.projectsRoot).toBe(path.join(os.homedir(), 'projects'));
+    });
+
+    it('repairs outdated npm global shim when npmShimPath is explicitly configured', async () => {
+      const fixConfigDir = path.join(tempDir, 'shim-fix-config');
+      const fixProjectsRoot = path.join(tempDir, 'shim-fix-projects');
+      const fixThrowawaysRoot = path.join(fixProjectsRoot, 'throwaways');
+      const fixJunction = path.join(tempDir, 'Desktop', 'ShimFixJunction');
+
+      ensureConfigDirs({ configDir: fixConfigDir });
+      writePowerShellWrapper(undefined, { configDir: fixConfigDir });
+      writeCmdWrapper(undefined, { configDir: fixConfigDir });
+      repairJunction(fixJunction, fixProjectsRoot);
+
+      const fakeShimDir = path.join(tempDir, 'npm-fix');
+      fs.mkdirSync(fakeShimDir, { recursive: true });
+      const fakeShimPath = path.join(fakeShimDir, 'proj.cmd');
+      fs.writeFileSync(fakeShimPath, '@ECHO off\nnode "%~dp0\\node_modules\\proj-cli\\dist\\index.js" %*\n', 'utf8');
+
+      const fixReport = await fixDoctorIssues({
+        configDir: fixConfigDir,
+        projectsRoot: fixProjectsRoot,
+        throwawaysRoot: fixThrowawaysRoot,
+        desktopJunctionPath: fixJunction,
+        npmShimPath: fakeShimPath,
+      });
+
+      expect(fixReport.repairActions.some((a) => a.includes('Updated npm global shim'))).toBe(true);
+      const updatedShim = fs.readFileSync(fakeShimPath, 'utf8');
+      expect(updatedShim).toContain('ipc.json');
+      expect(updatedShim).toContain('delims=;');
+      expect(fixReport.fixedReport.allOk).toBe(true);
     });
   });
 

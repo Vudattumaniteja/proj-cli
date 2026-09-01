@@ -74,6 +74,7 @@ export interface DoctorOptions {
   desktopJunctionPath?: string;
   minGitVersion?: string;
   gitExec?: (args: string[]) => Promise<{ stdout: string }>;
+  npmShimPath?: string;
 }
 
 /**
@@ -592,18 +593,28 @@ export async function runDoctor(options?: DoctorOptions): Promise<DoctorReport> 
   if (!psExists) missingIpc.push(`PowerShell wrapper (${psWrapper})`);
   if (!cmdExists) missingIpc.push(`CMD wrapper (${cmdWrapper})`);
 
-  // Check npm global shim on Windows if present
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    const npmShimPath = path.join(process.env.APPDATA, 'npm', 'proj.cmd');
-    if (fs.existsSync(npmShimPath)) {
-      try {
-        const shimContent = fs.readFileSync(npmShimPath, 'utf8');
-        if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
-          missingIpc.push(`npm global shim (${npmShimPath}) outdated IPC interceptor`);
-        }
-      } catch {
-        // Ignore read error
+  // Check npm global shim on Windows if present or if npmShimPath is explicitly passed
+  const isCustomOrTest =
+    options?.configDir !== undefined ||
+    process.env.PROJ_CONFIG_DIR !== undefined ||
+    process.env.NODE_ENV === 'test' ||
+    Boolean(process.env.VITEST);
+
+  const npmShimPath =
+    options?.npmShimPath !== undefined
+      ? options.npmShimPath
+      : !isCustomOrTest && process.platform === 'win32' && process.env.APPDATA
+      ? path.join(process.env.APPDATA, 'npm', 'proj.cmd')
+      : undefined;
+
+  if (npmShimPath && fs.existsSync(npmShimPath)) {
+    try {
+      const shimContent = fs.readFileSync(npmShimPath, 'utf8');
+      if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+        missingIpc.push(`npm global shim (${npmShimPath}) outdated IPC interceptor`);
       }
+    } catch {
+      // Ignore read error
     }
   }
 
@@ -725,18 +736,28 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
   writeCmdWrapper(cmdWrapper, { configDir });
   repairActions.push(`Generated CMD IPC bridge wrapper script: ${cmdWrapper}`);
 
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    const npmShimPath = path.join(process.env.APPDATA, 'npm', 'proj.cmd');
-    if (fs.existsSync(npmShimPath)) {
-      try {
-        const shimContent = fs.readFileSync(npmShimPath, 'utf8');
-        if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
-          writeCmdWrapper(npmShimPath, { isNpmShim: true });
-          repairActions.push(`Updated npm global shim with IPC interceptor: ${npmShimPath}`);
-        }
-      } catch {
-        // Ignore read/write error
+  const isCustomOrTest =
+    options?.configDir !== undefined ||
+    process.env.PROJ_CONFIG_DIR !== undefined ||
+    process.env.NODE_ENV === 'test' ||
+    Boolean(process.env.VITEST);
+
+  const npmShimPath =
+    options?.npmShimPath !== undefined
+      ? options.npmShimPath
+      : !isCustomOrTest && process.platform === 'win32' && process.env.APPDATA
+      ? path.join(process.env.APPDATA, 'npm', 'proj.cmd')
+      : undefined;
+
+  if (npmShimPath && fs.existsSync(npmShimPath)) {
+    try {
+      const shimContent = fs.readFileSync(npmShimPath, 'utf8');
+      if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+        writeCmdWrapper(npmShimPath, { isNpmShim: true });
+        repairActions.push(`Updated npm global shim with IPC interceptor: ${npmShimPath}`);
       }
+    } catch {
+      // Ignore read/write error
     }
   }
 

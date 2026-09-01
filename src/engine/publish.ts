@@ -3,6 +3,7 @@ import path from 'node:path';
 import { simpleGit } from 'simple-git';
 import { execa } from 'execa';
 import { getConfig } from '../config/index.js';
+import { resolveProject } from './discovery.js';
 import { findThrowawayEntry } from './throwaway.js';
 import type { PublishOptions, PublishResult } from './types.js';
 
@@ -52,24 +53,31 @@ export async function publishProject(
       throw new Error(`Cannot locate project "${trimmed}": Project directory not found at "${resolved}"`);
     }
   } else {
-    // 2. Check canonical workspace root
-    const canonicalCandidate = path.join(projectsRoot, trimmed);
-    if (fs.existsSync(canonicalCandidate) && fs.statSync(canonicalCandidate).isDirectory()) {
-      projectPath = canonicalCandidate;
-    }
+    // 2. Use resolveProject to look across root, groups, and throwaways
+    const resolveResult = await resolveProject(trimmed, projectsRoot, {
+      configDir: options?.configDir,
+      throwawaysRoot,
+    });
 
-    // 3. Check throwaways root
-    if (!projectPath) {
-      const throwawaysCandidate = path.join(throwawaysRoot, trimmed);
-      if (fs.existsSync(throwawaysCandidate) && fs.statSync(throwawaysCandidate).isDirectory()) {
-        projectPath = throwawaysCandidate;
+    if (resolveResult.resolved && resolveResult.targetPath) {
+      if (resolveResult.type === 'group') {
+        if (resolveResult.group && resolveResult.group.projectCount > 0) {
+          throw new Error(`Cannot locate project "${trimmed}": Target is a group folder, not a project`);
+        }
+        projectPath = resolveResult.targetPath;
+      } else {
+        projectPath = resolveResult.targetPath;
       }
+    } else if (resolveResult.isAmbiguous) {
+      const matchPaths = resolveResult.ambiguousMatches.map((m) => m.path).join(', ');
+      throw new Error(
+        `Ambiguous project name "${trimmed}". Found multiple matching projects across groups: ${matchPaths}`
+      );
     }
 
-    // 4. Check throwaways registry in config
-    if (!projectPath) {
-      const throwaways = config.throwaways || {};
-      const found = findThrowawayEntry(throwaways, trimmed);
+    // 3. Fallback: check throwaways registry in config
+    if (!projectPath && config.throwaways) {
+      const found = findThrowawayEntry(config.throwaways, trimmed);
       if (
         found?.record?.path &&
         fs.existsSync(found.record.path) &&
@@ -79,7 +87,7 @@ export async function publishProject(
       }
     }
 
-    // 5. Fallback check for relative path
+    // 4. Fallback: check relative path from cwd
     if (!projectPath) {
       const relativeCandidate = path.resolve(trimmed);
       if (fs.existsSync(relativeCandidate) && fs.statSync(relativeCandidate).isDirectory()) {
