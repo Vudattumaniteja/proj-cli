@@ -1,0 +1,29 @@
+[
+  {
+    "name": "alpha-web",
+    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-RME09R\\projects\\alpha-web",
+    "isGit": true,
+    "branch": "master",
+    "dirtyCount": 0,
+    "isDirty": false,
+    "templateType": "minimal",
+    "templateBadge": "[minimal]",
+    "lastModified": "2026-09-03T23:31:50.478Z",
+    "isThrowaway": false,
+    "hasRemote": false
+  },
+  {
+    "name": "beta-api",
+    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-RME09R\\projects\\backend\\beta-api",
+    "isGit": true,
+    "branch": "master",
+    "dirtyCount": 0,
+    "isDirty": false,
+    "templateType": "minimal",
+    "templateBadge": "[minimal]",
+    "lastModified": "2026-09-03T23:31:51.341Z",
+    "isThrowaway": false,
+    "hasRemote": false,
+    "group": "backend"
+  }
+]

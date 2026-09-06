@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-09-03T23:31:57.034Z",
+  "allOk": false,
+  "passedCount": 2,
+  "warningCount": 3,
+  "errorCount": 0,
+  "checks": [
+    {
+      "id": "git",
+      "name": "Git binary availability",
+      "status": "ok",
+      "message": "Git binary available (v2.52.0 >= v2.20.0)",
+      "fixable": false
+    },
+    {
+      "id": "directories",
+      "name": "Canonical projects & throwaways accessibility",
+      "status": "ok",
+      "message": "Canonical projects and throwaways directories accessible (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "fixable": false
+    },
+    {
+      "id": "junction",
+      "name": "Desktop Junction health status",
+      "status": "warning",
+      "message": "Desktop Junction is not created (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\Desktop\\Projects -> C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "fixable": true
+    },
+    {
+      "id": "config",
+      "name": "User configuration & templates integrity",
+      "status": "warning",
+      "message": "Configuration integrity issues: missing AGENTS.md template, missing gitignore.default template",
+      "fixable": true
+    },
+    {
+      "id": "ipc",
+      "name": "Shell IPC bridge readiness",
+      "status": "warning",
+      "message": "Shell IPC bridge issues: PowerShell wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.ps1), CMD wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.cmd)",
+      "fixable": true
+    }
+  ]
+}

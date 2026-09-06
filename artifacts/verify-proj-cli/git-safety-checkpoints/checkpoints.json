@@ -1,0 +1,24 @@
+[
+  {
+    "hash": "ae94b53870a2cd5b24db90da0d567a2bf11056cf",
+    "shortHash": "ae94b53",
+    "message": "checkpoint: initial experiment",
+    "date": "2026-09-03T23:31:55.000Z",
+    "timestamp": "2026-09-03T23:31:55.000Z",
+    "relativeTimestamp": "just now",
+    "relativeTime": "just now",
+    "authorName": "Proj Verifier",
+    "authorEmail": "verify@example.com"
+  },
+  {
+    "hash": "1c2524d1b35e4c16369c8c20516b8ff69893d380",
+    "shortHash": "1c2524d",
+    "message": "checkpoint: Initial commit with agent guardrails & gitignore",
+    "date": "2026-09-03T23:31:54.000Z",
+    "timestamp": "2026-09-03T23:31:54.000Z",
+    "relativeTimestamp": "just now",
+    "relativeTime": "just now",
+    "authorName": "Proj Verifier",
+    "authorEmail": "verify@example.com"
+  }
+]

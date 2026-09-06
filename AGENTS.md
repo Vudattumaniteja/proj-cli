@@ -3,7 +3,7 @@
 ## Agent Guidelines & Standards
 
 ### Core Execution Rule
-- **Always read [RULES.md](file:///C:/Users/Manit/projects/clearing%20out%20the%20trash/RULES.md) before planning, running commands, or implementing features.** Follow all test isolation, boundary validation, and architecture rules defined there.
+- **Always read [RULES.md](file:///C:/Users/Manit/projects/proj-cli/RULES.md) before planning, running commands, or implementing features.** Follow all test isolation, boundary validation, and architecture rules defined there.
 
 ### Development Workflow & TDD
 - Always follow Test-Driven Development (TDD) using the Red-Green-Refactor loop.

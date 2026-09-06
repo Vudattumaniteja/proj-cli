@@ -1,0 +1,58 @@
+=== Step 1: proj new alpha-web -t minimal ===
+Exit code: 0
+STDOUT:
+Successfully created project "alpha-web" at C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-RME09R\projects\alpha-web
+
+STDERR:
+
+
+=== Step 2: proj new beta-api -g backend ===
+Exit code: 0
+STDOUT:
+Successfully created project "beta-api" at C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-RME09R\projects\backend\beta-api
+
+STDERR:
+
+
+=== Step 3: proj list --json ===
+Exit code: 0
+STDOUT:
+[
+  {
+    "name": "alpha-web",
+    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-RME09R\\projects\\alpha-web",
+    "isGit": true,
+    "branch": "master",
+    "dirtyCount": 0,
+    "isDirty": false,
+    "templateType": "minimal",
+    "templateBadge": "[minimal]",
+    "lastModified": "2026-09-03T23:31:50.478Z",
+    "isThrowaway": false,
+    "hasRemote": false
+  },
+  {
+    "name": "beta-api",
+    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-RME09R\\projects\\backend\\beta-api",
+    "isGit": true,
+    "branch": "master",
+    "dirtyCount": 0,
+    "isDirty": false,
+    "templateType": "minimal",
+    "templateBadge": "[minimal]",
+    "lastModified": "2026-09-03T23:31:51.341Z",
+    "isThrowaway": false,
+    "hasRemote": false,
+    "group": "backend"
+  }
+]
+
+STDERR:
+
+
+=== Step 4: proj move alpha-web frontend ===
+Exit code: 0
+STDOUT:
+Successfully moved project "alpha-web" to group "frontend" (C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-RME09R\projects\frontend\alpha-web)
+
+STDERR:

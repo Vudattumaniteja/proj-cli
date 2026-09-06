@@ -1,0 +1,86 @@
+=== Step 1: proj doctor --json ===
+Exit code: 0
+STDOUT:
+{
+  "timestamp": "2026-09-03T23:31:57.034Z",
+  "allOk": false,
+  "passedCount": 2,
+  "warningCount": 3,
+  "errorCount": 0,
+  "checks": [
+    {
+      "id": "git",
+      "name": "Git binary availability",
+      "status": "ok",
+      "message": "Git binary available (v2.52.0 >= v2.20.0)",
+      "fixable": false
+    },
+    {
+      "id": "directories",
+      "name": "Canonical projects & throwaways accessibility",
+      "status": "ok",
+      "message": "Canonical projects and throwaways directories accessible (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "fixable": false
+    },
+    {
+      "id": "junction",
+      "name": "Desktop Junction health status",
+      "status": "warning",
+      "message": "Desktop Junction is not created (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\Desktop\\Projects -> C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "fixable": true
+    },
+    {
+      "id": "config",
+      "name": "User configuration & templates integrity",
+      "status": "warning",
+      "message": "Configuration integrity issues: missing AGENTS.md template, missing gitignore.default template",
+      "fixable": true
+    },
+    {
+      "id": "ipc",
+      "name": "Shell IPC bridge readiness",
+      "status": "warning",
+      "message": "Shell IPC bridge issues: PowerShell wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.ps1), CMD wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.cmd)",
+      "fixable": true
+    }
+  ]
+}
+
+
+=== Step 2: proj doctor --fix ===
+Exit code: 0
+STDOUT:
+System Diagnostics & Self-Healing (proj doctor --fix):
+
+Repairs executed:
+  [32m+[39m Verified and ensured configuration & template files at C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj
+  [32m+[39m Created Desktop Directory Junction: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\Desktop\Projects -> C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\projects
+  [32m+[39m Generated PowerShell IPC bridge wrapper script: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj\proj.ps1
+  [32m+[39m Generated CMD IPC bridge wrapper script: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj\proj.cmd
+
+Post-repair Diagnostic Status:
+  [32m[✓][39m Git binary availability: Git binary available (v2.52.0 >= v2.20.0)
+  [32m[✓][39m Canonical projects & throwaways accessibility: Canonical projects and throwaways directories accessible (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\projects)
+  [32m[✓][39m Desktop Junction health status: Desktop Junction is healthy (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\Desktop\Projects -> C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\projects)
+  [32m[✓][39m User configuration & templates integrity: User configuration and templates intact (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj)
+  [32m[✓][39m Shell IPC bridge readiness: Shell IPC bridge ready (PowerShell & CMD wrappers intact)
+
+Diagnostic Summary: 5 passed, 0 warnings, 0 errors. [32mAll issues successfully repaired![39m
+
+
+=== Step 3: proj rules view ===
+Exit code: 0
+STDOUT:
+# AGENTS.md
+
+## Project Context & Coding Guidelines
+
+- Follow Test-Driven Development (TDD): write unit/integration tests before writing implementation code.
+- Write clean, modular, and typed TypeScript / JavaScript code.
+- Keep functions focused and well-documented.
+- Run tests and linters before committing.
+
+## Milestone Commit Conventions
+- Checkpoints must follow format: `checkpoint: <message>`.
+- Standard development commits use conventional commits (e.g. `feat: ...`, `fix: ...`).
+
