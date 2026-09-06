@@ -171,14 +171,21 @@ function ${fnName} {
 
                 if ($token -and $token.action -and $token.targetPath) {
                     if ($token.action -eq "cd") {
-                        if (Test-Path $token.targetPath) {
-                            Set-Location -Path $token.targetPath
+                        if (Test-Path -LiteralPath $token.targetPath) {
+                            if (Test-Path -PathType Container -LiteralPath $token.targetPath) {
+                                Set-Location -LiteralPath $token.targetPath
+                            } else {
+                                Set-Location -LiteralPath (Split-Path -Parent $token.targetPath)
+                            }
+                            Clear-Host
                         }
                     } elseif ($token.action -eq "code") {
-                        if (Test-Path $token.targetPath) {
-                            Set-Location -Path $token.targetPath
+                        if (Test-Path -LiteralPath $token.targetPath) {
+                            if (Test-Path -PathType Container -LiteralPath $token.targetPath) {
+                                Set-Location -LiteralPath $token.targetPath
+                            }
                         }
-                        code $token.targetPath
+                        code "$($token.targetPath)"
                     }
                 }
             }
@@ -271,6 +278,7 @@ IF DEFINED JUMP_TARGET (
     ENDLOCAL
     IF EXIST "%%T\\" (
       cd /d "%%T"
+      cls
     )
     exit /b %%U
   )
@@ -310,6 +318,7 @@ IF DEFINED JUMP_TARGET (
     ENDLOCAL
     IF EXIST "%%T\\" (
       cd /d "%%T"
+      cls
     )
     exit /b %%U
   )

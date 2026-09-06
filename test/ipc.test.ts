@@ -193,6 +193,7 @@ describe('PowerShell IPC Bridge', () => {
       expect(script).toContain('ipc.json');
       expect(script).toContain('ConvertFrom-Json');
       expect(script).toContain('Set-Location');
+      expect(script).toContain('Clear-Host');
       expect(script).toContain('code');
       expect(script).toContain('Remove-Item');
     });
@@ -243,6 +244,7 @@ describe('PowerShell IPC Bridge', () => {
       expect(script).toContain('SETLOCAL EnableDelayedExpansion');
       expect(script).toContain('ipc.json');
       expect(script).toContain('cd /d');
+      expect(script).toContain('cls');
       expect(script).toContain('DEL "%IPC_FILE%"');
       expect(script).toContain('exit /b %PROJ_EXIT%');
     });
@@ -253,6 +255,7 @@ describe('PowerShell IPC Bridge', () => {
       expect(script).toContain('"%_prog%"');
       expect(script).toContain('node_modules\\proj-cli\\dist\\index.js');
       expect(script).toContain('cd /d');
+      expect(script).toContain('cls');
       expect(script).toContain('DEL "%IPC_FILE%"');
     });
 
