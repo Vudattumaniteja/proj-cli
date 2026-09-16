@@ -78,6 +78,24 @@ export interface DoctorOptions {
 }
 
 /**
+ * Checks if a PowerShell wrapper script content is outdated.
+ */
+export function isPowerShellWrapperOutdated(content: string): boolean {
+  return !content.includes('Clear-Host');
+}
+
+/**
+ * Checks if a CMD wrapper or shim script content is outdated.
+ */
+export function isCmdWrapperOutdated(content: string): boolean {
+  return (
+    !content.includes('ipc.json') ||
+    !content.includes('delims=;') ||
+    !content.includes('cls')
+  );
+}
+
+/**
  * Compares two semantic version strings (e.g. "2.43.0" vs "2.20.0").
  * Returns 1 if v1 > v2, -1 if v1 < v2, and 0 if equal.
  */
@@ -590,8 +608,30 @@ export async function runDoctor(options?: DoctorOptions): Promise<DoctorReport> 
   const cmdExists = fs.existsSync(cmdWrapper);
 
   const missingIpc: string[] = [];
-  if (!psExists) missingIpc.push(`PowerShell wrapper (${psWrapper})`);
-  if (!cmdExists) missingIpc.push(`CMD wrapper (${cmdWrapper})`);
+  if (!psExists) {
+    missingIpc.push(`PowerShell wrapper (${psWrapper})`);
+  } else {
+    try {
+      const psContent = fs.readFileSync(psWrapper, 'utf8');
+      if (isPowerShellWrapperOutdated(psContent)) {
+        missingIpc.push(`PowerShell wrapper (${psWrapper}) outdated navigation logic`);
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
+  if (!cmdExists) {
+    missingIpc.push(`CMD wrapper (${cmdWrapper})`);
+  } else {
+    try {
+      const cmdContent = fs.readFileSync(cmdWrapper, 'utf8');
+      if (isCmdWrapperOutdated(cmdContent)) {
+        missingIpc.push(`CMD wrapper (${cmdWrapper}) outdated IPC interceptor`);
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
 
   // Check npm global shim on Windows if present or if npmShimPath is explicitly passed
   const isCustomOrTest =
@@ -610,7 +650,7 @@ export async function runDoctor(options?: DoctorOptions): Promise<DoctorReport> 
   if (npmShimPath && fs.existsSync(npmShimPath)) {
     try {
       const shimContent = fs.readFileSync(npmShimPath, 'utf8');
-      if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+      if (isCmdWrapperOutdated(shimContent)) {
         missingIpc.push(`npm global shim (${npmShimPath}) outdated IPC interceptor`);
       }
     } catch {
@@ -730,11 +770,33 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
   if (!fs.existsSync(psWrapper)) {
     writePowerShellWrapper(psWrapper, { configDir });
     repairActions.push(`Generated PowerShell IPC bridge wrapper script: ${psWrapper}`);
+  } else {
+    try {
+      const psContent = fs.readFileSync(psWrapper, 'utf8');
+      if (isPowerShellWrapperOutdated(psContent)) {
+        writePowerShellWrapper(psWrapper, { configDir });
+        repairActions.push(`Updated PowerShell IPC bridge wrapper script: ${psWrapper}`);
+      }
+    } catch {
+      // Ignore read/write error
+    }
   }
 
   const cmdWrapper = path.join(configDir, 'proj.cmd');
-  writeCmdWrapper(cmdWrapper, { configDir });
-  repairActions.push(`Generated CMD IPC bridge wrapper script: ${cmdWrapper}`);
+  if (!fs.existsSync(cmdWrapper)) {
+    writeCmdWrapper(cmdWrapper, { configDir });
+    repairActions.push(`Generated CMD IPC bridge wrapper script: ${cmdWrapper}`);
+  } else {
+    try {
+      const cmdContent = fs.readFileSync(cmdWrapper, 'utf8');
+      if (isCmdWrapperOutdated(cmdContent)) {
+        writeCmdWrapper(cmdWrapper, { configDir });
+        repairActions.push(`Updated CMD IPC bridge wrapper script: ${cmdWrapper}`);
+      }
+    } catch {
+      // Ignore read/write error
+    }
+  }
 
   const isCustomOrTest =
     options?.configDir !== undefined ||
@@ -752,7 +814,7 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
   if (npmShimPath && fs.existsSync(npmShimPath)) {
     try {
       const shimContent = fs.readFileSync(npmShimPath, 'utf8');
-      if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+      if (isCmdWrapperOutdated(shimContent)) {
         writeCmdWrapper(npmShimPath, { isNpmShim: true });
         repairActions.push(`Updated npm global shim with IPC interceptor: ${npmShimPath}`);
       }

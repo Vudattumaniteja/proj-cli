@@ -171,14 +171,23 @@ function ${fnName} {
 
                 if ($token -and $token.action -and $token.targetPath) {
                     if ($token.action -eq "cd") {
-                        if (Test-Path $token.targetPath) {
-                            Set-Location -Path $token.targetPath
+                        if (Test-Path -LiteralPath $token.targetPath) {
+                            if (Test-Path -PathType Container -LiteralPath $token.targetPath) {
+                                Set-Location -LiteralPath $token.targetPath
+                            } else {
+                                Set-Location -LiteralPath (Split-Path -Parent $token.targetPath)
+                            }
+                            if ($?) {
+                                Clear-Host
+                            }
                         }
                     } elseif ($token.action -eq "code") {
-                        if (Test-Path $token.targetPath) {
-                            Set-Location -Path $token.targetPath
+                        if (Test-Path -LiteralPath $token.targetPath) {
+                            if (Test-Path -PathType Container -LiteralPath $token.targetPath) {
+                                Set-Location -LiteralPath $token.targetPath
+                            }
                         }
-                        code $token.targetPath
+                        code "$($token.targetPath)"
                     }
                 }
             }
@@ -268,11 +277,11 @@ IF DEFINED JUMP_TARGET (
     code "!JUMP_TARGET!" 2>NUL
   )
   FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
-    ENDLOCAL
     IF EXIST "%%T\\" (
       cd /d "%%T"
+      if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
     )
-    exit /b %%U
+    ENDLOCAL & exit /b %%U
   )
 )
 
@@ -307,11 +316,11 @@ IF DEFINED JUMP_TARGET (
     code "!JUMP_TARGET!" 2>NUL
   )
   FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
-    ENDLOCAL
     IF EXIST "%%T\\" (
       cd /d "%%T"
+      if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
     )
-    exit /b %%U
+    ENDLOCAL & exit /b %%U
   )
 )
 

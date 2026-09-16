@@ -290,8 +290,32 @@ export async function inspectProject(
 }
 
 /**
+ * Concurrently processes an array of items with a bounded concurrency limit.
+ */
+async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const concurrency = Math.max(1, Math.min(limit, items.length));
+  const results: R[] = new Array(items.length);
+  let currentIndex = 0;
+
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (currentIndex < items.length) {
+      const idx = currentIndex++;
+      results[idx] = await fn(items[idx]);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
+/**
  * Scans the canonical projects directory and throwaways directory, returning structured ProjectInfo list.
- * Scans both root projects and 1-level group subfolders.
+ * Scans both root projects and 1-level group subfolders with bounded parallel inspection.
  */
 export async function listProjects(
   canonicalRoot: string,
@@ -314,7 +338,12 @@ export async function listProjects(
     resolvedThrowawaysRoot = path.join(resolvedCanonicalRoot, 'throwaways');
   }
 
-  const results: ProjectInfo[] = [];
+  interface ProjectTarget {
+    fullPath: string;
+    isThrowaway: boolean;
+    group?: string;
+  }
+  const targets: ProjectTarget[] = [];
 
   // 1. Scan canonicalRoot if it exists
   if (fs.existsSync(resolvedCanonicalRoot)) {
@@ -342,12 +371,10 @@ export async function listProjects(
 
       if (hasGit || templateType !== null) {
         // Root standalone project
-        const info = await inspectProject(fullPath, {
+        targets.push({
+          fullPath,
           isThrowaway: false,
-          configDir: options?.configDir,
-          now: options?.now,
         });
-        results.push(info);
       } else {
         // Group container: scan 1-level subdirectories
         let childEntries: fs.Dirent[] = [];
@@ -363,13 +390,11 @@ export async function listProjects(
           if (RESERVED_FOLDER_NAMES.has(child.name)) continue;
 
           const childPath = path.join(fullPath, child.name);
-          const childInfo = await inspectProject(childPath, {
+          targets.push({
+            fullPath: childPath,
             group: entry.name,
             isThrowaway: false,
-            configDir: options?.configDir,
-            now: options?.now,
           });
-          results.push(childInfo);
         }
       }
     }
@@ -391,14 +416,22 @@ export async function listProjects(
       if (RESERVED_FOLDER_NAMES.has(entry.name)) continue;
 
       const fullPath = path.join(resolvedThrowawaysRoot, entry.name);
-      const info = await inspectProject(fullPath, {
+      targets.push({
+        fullPath,
         isThrowaway: true,
-        configDir: options?.configDir,
-        now: options?.now,
       });
-      results.push(info);
     }
   }
+
+  // Inspect all discovered targets concurrently with bounded parallelism
+  const results = await mapConcurrent(targets, 8, (target) =>
+    inspectProject(target.fullPath, {
+      isThrowaway: target.isThrowaway,
+      group: target.group,
+      configDir: options?.configDir,
+      now: options?.now,
+    })
+  );
 
   return results.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 }
@@ -464,21 +497,23 @@ export async function listGroups(
       childEntries = [];
     }
 
-    const childProjects: ProjectInfo[] = [];
+    const childTargets: string[] = [];
     for (const child of childEntries) {
       if (!child.isDirectory() && !child.isSymbolicLink()) continue;
       if (child.name.startsWith('.')) continue;
       if (RESERVED_FOLDER_NAMES.has(child.name)) continue;
 
-      const childPath = path.join(fullPath, child.name);
-      const childInfo = await inspectProject(childPath, {
+      childTargets.push(path.join(fullPath, child.name));
+    }
+
+    const childProjects = await mapConcurrent(childTargets, 8, (childPath) =>
+      inspectProject(childPath, {
         group: entry.name,
         isThrowaway: false,
         configDir: options?.configDir,
         now: options?.now,
-      });
-      childProjects.push(childInfo);
-    }
+      })
+    );
 
     childProjects.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 
@@ -532,46 +567,48 @@ export async function resolveProject(
   if (path.isAbsolute(trimmed)) {
     const resolvedPath = path.resolve(trimmed);
     if (fs.existsSync(resolvedPath)) {
-      const allProjects = await listProjects(resolvedCanonicalRoot, options);
-      const matchedProject = allProjects.find(
-        (p) => path.resolve(p.path) === resolvedPath
-      );
-      if (matchedProject) {
-        return {
-          resolved: true,
-          targetPath: resolvedPath,
-          type: matchedProject.isThrowaway ? 'throwaway' : 'project',
-          project: matchedProject,
-          isAmbiguous: false,
-          ambiguousMatches: [],
-        };
-      }
+      const isThrowaway = path.resolve(resolvedPath).startsWith(resolvedThrowawaysRoot);
+      const isUnderCanonical = path.resolve(resolvedPath).startsWith(resolvedCanonicalRoot);
 
-      const allGroups = await listGroups(resolvedCanonicalRoot, options);
-      const matchedGroup = allGroups.find(
-        (g) => path.resolve(g.path) === resolvedPath
-      );
-      if (matchedGroup) {
-        return {
-          resolved: true,
-          targetPath: resolvedPath,
-          type: 'group',
-          group: matchedGroup,
-          isAmbiguous: false,
-          ambiguousMatches: [],
-        };
+      // Check if it is a group directory directly under canonicalRoot
+      if (isUnderCanonical && !isThrowaway) {
+        const rel = path.relative(resolvedCanonicalRoot, resolvedPath);
+        const parts = rel.split(path.sep).filter(Boolean);
+        if (parts.length === 1 && !RESERVED_FOLDER_NAMES.has(parts[0])) {
+          const hasGit = fs.existsSync(path.join(resolvedPath, '.git'));
+          const templateType = detectTemplateType(resolvedPath);
+          if (!hasGit && templateType === null) {
+            const allGroups = await listGroups(resolvedCanonicalRoot, options);
+            const matchedGroup = allGroups.find(
+              (g) => path.resolve(g.path) === resolvedPath
+            );
+            if (matchedGroup) {
+              return {
+                resolved: true,
+                targetPath: resolvedPath,
+                type: 'group',
+                group: matchedGroup,
+                isAmbiguous: false,
+                ambiguousMatches: [],
+              };
+            }
+          }
+        }
       }
 
       const stat = fs.statSync(resolvedPath);
       if (stat.isDirectory()) {
-        const isThrowaway = path.resolve(resolvedPath).startsWith(resolvedThrowawaysRoot);
-        const group = resolvedPath.startsWith(resolvedCanonicalRoot)
-          ? path.relative(resolvedCanonicalRoot, path.dirname(resolvedPath))
+        const group = isUnderCanonical && !isThrowaway
+          ? (() => {
+              const rel = path.relative(resolvedCanonicalRoot, resolvedPath);
+              const parts = rel.split(path.sep).filter(Boolean);
+              return parts.length > 1 ? parts[0] : undefined;
+            })()
           : undefined;
 
         const info = await inspectProject(resolvedPath, {
           isThrowaway,
-          ...(group && group !== '.' ? { group } : {}),
+          ...(group ? { group } : {}),
           configDir: options?.configDir,
           now: options?.now,
         });
@@ -600,20 +637,6 @@ export async function resolveProject(
     if (firstSegment === 'throwaways' || firstSegment === path.basename(resolvedThrowawaysRoot)) {
       const throwawayCandidate = path.join(resolvedThrowawaysRoot, secondSegment);
       if (fs.existsSync(throwawayCandidate)) {
-        const allProjects = await listProjects(resolvedCanonicalRoot, options);
-        const matched = allProjects.find(
-          (p) => path.resolve(p.path) === path.resolve(throwawayCandidate)
-        );
-        if (matched) {
-          return {
-            resolved: true,
-            targetPath: path.resolve(throwawayCandidate),
-            type: 'throwaway',
-            project: matched,
-            isAmbiguous: false,
-            ambiguousMatches: [],
-          };
-        }
         const info = await inspectProject(throwawayCandidate, {
           isThrowaway: true,
           configDir: options?.configDir,
@@ -633,23 +656,6 @@ export async function resolveProject(
     // Check if in group under canonicalRoot
     const groupCandidate = path.join(resolvedCanonicalRoot, firstSegment, secondSegment);
     if (fs.existsSync(groupCandidate)) {
-      const allProjects = await listProjects(resolvedCanonicalRoot, options);
-      const matchedProject = allProjects.find(
-        (p) =>
-          p.group === firstSegment &&
-          (p.name === secondSegment || path.resolve(p.path) === path.resolve(groupCandidate))
-      );
-      if (matchedProject) {
-        return {
-          resolved: true,
-          targetPath: path.resolve(groupCandidate),
-          type: 'project',
-          project: matchedProject,
-          isAmbiguous: false,
-          ambiguousMatches: [],
-        };
-      }
-
       const info = await inspectProject(groupCandidate, {
         group: firstSegment,
         isThrowaway: false,
@@ -667,21 +673,108 @@ export async function resolveProject(
     }
   }
 
-  // 3. Search across all projects for matching standalone name
-  const allProjects = await listProjects(resolvedCanonicalRoot, options);
-  const matchingProjects = allProjects.filter((p) => p.name === trimmed);
+  // 3. Search across workspace for matching standalone name (without inspecting unrelated projects)
+  interface CandidateTarget {
+    path: string;
+    isThrowaway: boolean;
+    group?: string;
+  }
+  const candidateTargets: CandidateTarget[] = [];
 
-  if (matchingProjects.length === 1) {
-    const match = matchingProjects[0];
+  // Check root standalone project
+  const rootCandidate = path.join(resolvedCanonicalRoot, trimmed);
+  if (
+    fs.existsSync(rootCandidate) &&
+    !RESERVED_FOLDER_NAMES.has(trimmed) &&
+    path.resolve(rootCandidate) !== resolvedThrowawaysRoot
+  ) {
+    const stat = fs.statSync(rootCandidate);
+    if (stat.isDirectory()) {
+      const hasGit = fs.existsSync(path.join(rootCandidate, '.git'));
+      const templateType = detectTemplateType(rootCandidate);
+      if (hasGit || templateType !== null) {
+        candidateTargets.push({
+          path: path.resolve(rootCandidate),
+          isThrowaway: false,
+        });
+      }
+    }
+  }
+
+  // Check 1-level groups for a matching child project
+  if (fs.existsSync(resolvedCanonicalRoot)) {
+    let groupEntries: fs.Dirent[] = [];
+    try {
+      groupEntries = fs.readdirSync(resolvedCanonicalRoot, { withFileTypes: true });
+    } catch {
+      groupEntries = [];
+    }
+    for (const groupEntry of groupEntries) {
+      if (!groupEntry.isDirectory() && !groupEntry.isSymbolicLink()) continue;
+      if (groupEntry.name.startsWith('.')) continue;
+      if (RESERVED_FOLDER_NAMES.has(groupEntry.name)) continue;
+
+      const groupPath = path.join(resolvedCanonicalRoot, groupEntry.name);
+      if (path.resolve(groupPath) === resolvedThrowawaysRoot) continue;
+
+      const hasGit = fs.existsSync(path.join(groupPath, '.git'));
+      const templateType = detectTemplateType(groupPath);
+      if (!hasGit && templateType === null) {
+        const childCandidate = path.join(groupPath, trimmed);
+        if (fs.existsSync(childCandidate) && !RESERVED_FOLDER_NAMES.has(trimmed)) {
+          const childStat = fs.statSync(childCandidate);
+          if (childStat.isDirectory()) {
+            candidateTargets.push({
+              path: path.resolve(childCandidate),
+              isThrowaway: false,
+              group: groupEntry.name,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Check throwaways
+  const includeThrowaways = options?.includeThrowaways !== false;
+  if (includeThrowaways && fs.existsSync(resolvedThrowawaysRoot)) {
+    const throwawayCandidate = path.join(resolvedThrowawaysRoot, trimmed);
+    if (fs.existsSync(throwawayCandidate) && !RESERVED_FOLDER_NAMES.has(trimmed)) {
+      const stat = fs.statSync(throwawayCandidate);
+      if (stat.isDirectory()) {
+        candidateTargets.push({
+          path: path.resolve(throwawayCandidate),
+          isThrowaway: true,
+        });
+      }
+    }
+  }
+
+  if (candidateTargets.length === 1) {
+    const target = candidateTargets[0];
+    const info = await inspectProject(target.path, {
+      isThrowaway: target.isThrowaway,
+      group: target.group,
+      configDir: options?.configDir,
+      now: options?.now,
+    });
     return {
       resolved: true,
-      targetPath: match.path,
-      type: match.isThrowaway ? 'throwaway' : 'project',
-      project: match,
+      targetPath: info.path,
+      type: info.isThrowaway ? 'throwaway' : 'project',
+      project: info,
       isAmbiguous: false,
       ambiguousMatches: [],
     };
-  } else if (matchingProjects.length > 1) {
+  } else if (candidateTargets.length > 1) {
+    const matchingProjects = await mapConcurrent(candidateTargets, 8, (target) =>
+      inspectProject(target.path, {
+        isThrowaway: target.isThrowaway,
+        group: target.group,
+        configDir: options?.configDir,
+        now: options?.now,
+      })
+    );
     return {
       resolved: false,
       targetPath: null,
@@ -691,41 +784,55 @@ export async function resolveProject(
   }
 
   // 4. Check if trimmed name matches a group folder name
-  const allGroups = await listGroups(resolvedCanonicalRoot, options);
-  const matchingGroup = allGroups.find((g) => g.name === trimmed);
-  if (matchingGroup) {
-    return {
-      resolved: true,
-      targetPath: matchingGroup.path,
-      type: 'group',
-      group: matchingGroup,
-      isAmbiguous: false,
-      ambiguousMatches: [],
-    };
+  const groupCandidatePath = path.join(resolvedCanonicalRoot, trimmed);
+  if (
+    fs.existsSync(groupCandidatePath) &&
+    !RESERVED_FOLDER_NAMES.has(trimmed) &&
+    path.resolve(groupCandidatePath) !== resolvedThrowawaysRoot
+  ) {
+    const stat = fs.statSync(groupCandidatePath);
+    if (stat.isDirectory()) {
+      const hasGit = fs.existsSync(path.join(groupCandidatePath, '.git'));
+      const templateType = detectTemplateType(groupCandidatePath);
+      if (!hasGit && templateType === null) {
+        const allGroups = await listGroups(resolvedCanonicalRoot, options);
+        const matchingGroup = allGroups.find((g) => g.name === trimmed);
+        if (matchingGroup) {
+          return {
+            resolved: true,
+            targetPath: matchingGroup.path,
+            type: 'group',
+            group: matchingGroup,
+            isAmbiguous: false,
+            ambiguousMatches: [],
+          };
+        }
+      }
+    }
   }
 
   // 5. Fallback check for direct directories under canonicalRoot, throwawaysRoot, or relative to cwd
-  const rootCandidate = path.join(resolvedCanonicalRoot, trimmed);
-  if (fs.existsSync(rootCandidate) && fs.statSync(rootCandidate).isDirectory()) {
+  const fallbackRootCandidate = path.join(resolvedCanonicalRoot, trimmed);
+  if (fs.existsSync(fallbackRootCandidate) && fs.statSync(fallbackRootCandidate).isDirectory()) {
     return {
       resolved: true,
-      targetPath: path.resolve(rootCandidate),
+      targetPath: path.resolve(fallbackRootCandidate),
       type: 'directory',
       isAmbiguous: false,
       ambiguousMatches: [],
     };
   }
 
-  const throwawayCandidate = path.join(resolvedThrowawaysRoot, trimmed);
-  if (fs.existsSync(throwawayCandidate) && fs.statSync(throwawayCandidate).isDirectory()) {
-    const info = await inspectProject(throwawayCandidate, {
+  const fallbackThrowawayCandidate = path.join(resolvedThrowawaysRoot, trimmed);
+  if (fs.existsSync(fallbackThrowawayCandidate) && fs.statSync(fallbackThrowawayCandidate).isDirectory()) {
+    const info = await inspectProject(fallbackThrowawayCandidate, {
       isThrowaway: true,
       configDir: options?.configDir,
       now: options?.now,
     });
     return {
       resolved: true,
-      targetPath: path.resolve(throwawayCandidate),
+      targetPath: path.resolve(fallbackThrowawayCandidate),
       type: 'throwaway',
       project: info,
       isAmbiguous: false,
