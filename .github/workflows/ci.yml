@@ -2,9 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'feat/**'
   pull_request:
-    branches: [main]
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -32,3 +39,105 @@ jobs:
 
       - name: Run full test suite
         run: npm test
+
+      - name: Run verification harness doctor check
+        run: node .agents/skills/verify-proj-cli/scripts/harness.mjs doctor
+
+      - name: Test shell IPC wrappers and auto-clear
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # Create isolated test environment
+          $testDir = Join-Path ([System.IO.Path]::GetTempPath()) ("proj-ci-shell-" + [guid]::NewGuid().ToString('N'))
+          $configDir = Join-Path $testDir ".proj"
+          $targetDir = Join-Path $testDir "target"
+          New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+          $env:PROJ_CONFIG_DIR = $configDir
+
+          Write-Host "==> 1. Generating shell wrappers..."
+          node --input-type=module -e "
+          import path from 'node:path';
+          import { writePowerShellWrapper, writeCmdWrapper } from './dist/index.js';
+
+          const configDir = process.env.PROJ_CONFIG_DIR;
+          const targetJs = path.resolve('dist/index.js');
+          writePowerShellWrapper(path.join(configDir, 'proj.ps1'), { configDir });
+          writeCmdWrapper(path.join(configDir, 'proj.cmd'), { configDir, targetJs });
+          "
+
+          $psWrapper = Join-Path $configDir "proj.ps1"
+          $cmdWrapper = Join-Path $configDir "proj.cmd"
+
+          if (-not (Test-Path $psWrapper)) { throw "proj.ps1 was not generated" }
+          if (-not (Test-Path $cmdWrapper)) { throw "proj.cmd was not generated" }
+
+          Write-Host "==> 2. Testing PowerShell wrapper and Clear-Host safety..."
+          . $psWrapper
+
+          if (-not (Get-Command proj -ErrorAction SilentlyContinue)) {
+            throw "PowerShell function 'proj' was not defined after sourcing proj.ps1"
+          }
+
+          # Verify Clear-Host executes safely in headless environment without crashing
+          Clear-Host
+          Write-Host "Direct Clear-Host executed safely in PowerShell."
+
+          # Verify PowerShell wrapper IPC consumption, Set-Location, and auto-clear
+          $ipcFile = Join-Path $configDir "ipc.json"
+          $payload = @{
+            action = "cd"
+            targetPath = $targetDir
+            timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          } | ConvertTo-Json
+          Set-Content -Path $ipcFile -Value $payload
+
+          # Dummy CLI binary to emulate command execution without consuming IPC file
+          $dummyBin = Join-Path $testDir "proj.cmd"
+          Set-Content -Path $dummyBin -Value "@echo off`necho 0.1.0"
+          $origPath = $env:PATH
+          $origLocation = (Get-Location).Path
+          $env:PATH = "$testDir;$env:PATH"
+
+          try {
+            proj --version
+            if (Test-Path $ipcFile) {
+              throw "PowerShell wrapper did not consume and clean up ipc.json"
+            }
+            $currentLocation = (Get-Location).Path
+            if ($currentLocation -ne $targetDir) {
+              throw "PowerShell wrapper did not navigate to target directory. Current: $currentLocation, Expected: $targetDir"
+            }
+            Write-Host "PowerShell wrapper successfully processed IPC cd, changed location, auto-cleared, and removed token."
+          } finally {
+            Set-Location -LiteralPath $origLocation
+            $env:PATH = $origPath
+          }
+
+          Write-Host "==> 3. Testing CMD wrapper and cls safety..."
+          cmd.exe /c "`"$cmdWrapper`" --version"
+          if ($LASTEXITCODE -ne 0) {
+            throw "CMD wrapper execution failed with exit code $LASTEXITCODE"
+          }
+
+          # Emulate IPC cd action for CMD wrapper
+          $payload = @{
+            action = "cd"
+            targetPath = $targetDir
+            timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          } | ConvertTo-Json
+          Set-Content -Path $ipcFile -Value $payload
+
+          cmd.exe /c "`"$cmdWrapper`" --version"
+          if ($LASTEXITCODE -ne 0) {
+            throw "CMD wrapper IPC auto-clear execution failed with exit code $LASTEXITCODE"
+          }
+          if (Test-Path $ipcFile) {
+            throw "CMD wrapper did not clean up ipc.json after cls execution"
+          }
+          Write-Host "CMD wrapper cls and IPC cd token processing succeeded."
+
+          # Cleanup isolated test environment
+          Remove-Item -Path $testDir -Recurse -Force
+          Write-Host "All shell wrapper auto-clear checks passed cleanly!"
