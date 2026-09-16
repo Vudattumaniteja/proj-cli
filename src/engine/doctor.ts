@@ -590,7 +590,18 @@ export async function runDoctor(options?: DoctorOptions): Promise<DoctorReport> 
   const cmdExists = fs.existsSync(cmdWrapper);
 
   const missingIpc: string[] = [];
-  if (!psExists) missingIpc.push(`PowerShell wrapper (${psWrapper})`);
+  if (!psExists) {
+    missingIpc.push(`PowerShell wrapper (${psWrapper})`);
+  } else {
+    try {
+      const psContent = fs.readFileSync(psWrapper, 'utf8');
+      if (!psContent.includes('Clear-Host')) {
+        missingIpc.push(`PowerShell wrapper (${psWrapper}) outdated navigation logic`);
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
   if (!cmdExists) missingIpc.push(`CMD wrapper (${cmdWrapper})`);
 
   // Check npm global shim on Windows if present or if npmShimPath is explicitly passed
@@ -610,7 +621,11 @@ export async function runDoctor(options?: DoctorOptions): Promise<DoctorReport> 
   if (npmShimPath && fs.existsSync(npmShimPath)) {
     try {
       const shimContent = fs.readFileSync(npmShimPath, 'utf8');
-      if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+      if (
+        !shimContent.includes('ipc.json') ||
+        !shimContent.includes('delims=;') ||
+        !shimContent.includes('cls')
+      ) {
         missingIpc.push(`npm global shim (${npmShimPath}) outdated IPC interceptor`);
       }
     } catch {
@@ -730,6 +745,16 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
   if (!fs.existsSync(psWrapper)) {
     writePowerShellWrapper(psWrapper, { configDir });
     repairActions.push(`Generated PowerShell IPC bridge wrapper script: ${psWrapper}`);
+  } else {
+    try {
+      const psContent = fs.readFileSync(psWrapper, 'utf8');
+      if (!psContent.includes('Clear-Host')) {
+        writePowerShellWrapper(psWrapper, { configDir });
+        repairActions.push(`Updated PowerShell IPC bridge wrapper script: ${psWrapper}`);
+      }
+    } catch {
+      // Ignore read/write error
+    }
   }
 
   const cmdWrapper = path.join(configDir, 'proj.cmd');
@@ -752,7 +777,11 @@ export async function fixDoctorIssues(options?: DoctorOptions): Promise<DoctorFi
   if (npmShimPath && fs.existsSync(npmShimPath)) {
     try {
       const shimContent = fs.readFileSync(npmShimPath, 'utf8');
-      if (!shimContent.includes('ipc.json') || !shimContent.includes('delims=;')) {
+      if (
+        !shimContent.includes('ipc.json') ||
+        !shimContent.includes('delims=;') ||
+        !shimContent.includes('cls')
+      ) {
         writeCmdWrapper(npmShimPath, { isNpmShim: true });
         repairActions.push(`Updated npm global shim with IPC interceptor: ${npmShimPath}`);
       }

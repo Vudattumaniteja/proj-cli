@@ -287,6 +287,75 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
       expect(ipcCheck?.status).toBe('warning');
       expect(ipcCheck?.message).toContain('outdated IPC interceptor');
     });
+
+    it('detects existing proj.ps1 lacking Clear-Host as outdated navigation logic', async () => {
+      ensureConfigDirs({ configDir: customConfigDir });
+      const psWrapperPath = path.join(customConfigDir, 'proj.ps1');
+      fs.writeFileSync(
+        psWrapperPath,
+        `function proj {
+    & proj.cmd $args
+    if (Test-Path $ipcFile) {
+        Set-Location $token.targetPath
+    }
+}`,
+        'utf8'
+      );
+      writeCmdWrapper(undefined, { configDir: customConfigDir });
+      repairJunction(customDesktopJunction, customProjectsRoot);
+
+      const report = await runDoctor({
+        configDir: customConfigDir,
+        projectsRoot: customProjectsRoot,
+        throwawaysRoot: customThrowawaysRoot,
+        desktopJunctionPath: customDesktopJunction,
+      });
+
+      expect(report.allOk).toBe(false);
+      const ipcCheck = report.checks.find((c) => c.id === 'ipc');
+      expect(ipcCheck?.status).toBe('warning');
+      expect(ipcCheck?.message).toContain('outdated navigation logic');
+      expect(ipcCheck?.message).toContain('PowerShell wrapper');
+    });
+
+    it('detects existing npm global shim lacking cls as outdated IPC interceptor', async () => {
+      ensureConfigDirs({ configDir: customConfigDir });
+      writePowerShellWrapper(undefined, { configDir: customConfigDir });
+      writeCmdWrapper(undefined, { configDir: customConfigDir });
+      repairJunction(customDesktopJunction, customProjectsRoot);
+
+      const fakeShimDir = path.join(tempDir, 'npm-no-cls');
+      fs.mkdirSync(fakeShimDir, { recursive: true });
+      const fakeShimPath = path.join(fakeShimDir, 'proj.cmd');
+      fs.writeFileSync(
+        fakeShimPath,
+        `@ECHO off
+SET "IPC_FILE=%USERPROFILE%\\.proj\\ipc.json"
+FOR /F "usebackq tokens=1* delims=;" %%A IN (\`node -e "..." "%IPC_FILE%"\`) DO (
+  SET "IPC_ACTION=%%A"
+  SET "JUMP_TARGET=%%B"
+)
+IF DEFINED JUMP_TARGET (
+  cd /d "%JUMP_TARGET%"
+)
+exit /b %PROJ_EXIT%
+`,
+        'utf8'
+      );
+
+      const report = await runDoctor({
+        configDir: customConfigDir,
+        projectsRoot: customProjectsRoot,
+        throwawaysRoot: customThrowawaysRoot,
+        desktopJunctionPath: customDesktopJunction,
+        npmShimPath: fakeShimPath,
+      });
+
+      expect(report.allOk).toBe(false);
+      const ipcCheck = report.checks.find((c) => c.id === 'ipc');
+      expect(ipcCheck?.status).toBe('warning');
+      expect(ipcCheck?.message).toContain('outdated IPC interceptor');
+    });
   });
 
   describe('fixDoctorIssues()', () => {
@@ -375,6 +444,70 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
       const updatedShim = fs.readFileSync(fakeShimPath, 'utf8');
       expect(updatedShim).toContain('ipc.json');
       expect(updatedShim).toContain('delims=;');
+      expect(fixReport.fixedReport.allOk).toBe(true);
+    });
+
+    it('updates outdated proj.ps1 lacking Clear-Host and npm global shim lacking cls', async () => {
+      const fixConfigDir = path.join(tempDir, 'heal-wrappers-config');
+      const fixProjectsRoot = path.join(tempDir, 'heal-wrappers-projects');
+      const fixThrowawaysRoot = path.join(fixProjectsRoot, 'throwaways');
+      const fixJunction = path.join(tempDir, 'Desktop', 'HealWrappersJunction');
+
+      ensureConfigDirs({ configDir: fixConfigDir });
+      repairJunction(fixJunction, fixProjectsRoot);
+      writeCmdWrapper(undefined, { configDir: fixConfigDir });
+
+      // Outdated proj.ps1 lacking Clear-Host
+      const psWrapperPath = path.join(fixConfigDir, 'proj.ps1');
+      fs.writeFileSync(
+        psWrapperPath,
+        `function proj {
+    & proj.cmd $args
+    if (Test-Path $ipcFile) {
+        Set-Location $token.targetPath
+    }
+}`,
+        'utf8'
+      );
+
+      // Outdated npm shim with ipc.json & delims=; but lacking cls
+      const fakeShimDir = path.join(tempDir, 'npm-heal');
+      fs.mkdirSync(fakeShimDir, { recursive: true });
+      const fakeShimPath = path.join(fakeShimDir, 'proj.cmd');
+      fs.writeFileSync(
+        fakeShimPath,
+        `@ECHO off
+SET "IPC_FILE=%USERPROFILE%\\.proj\\ipc.json"
+FOR /F "usebackq tokens=1* delims=;" %%A IN (\`node -e "..." "%IPC_FILE%"\`) DO (
+  SET "IPC_ACTION=%%A"
+  SET "JUMP_TARGET=%%B"
+)
+IF DEFINED JUMP_TARGET (
+  cd /d "%JUMP_TARGET%"
+)
+exit /b %PROJ_EXIT%
+`,
+        'utf8'
+      );
+
+      const fixReport = await fixDoctorIssues({
+        configDir: fixConfigDir,
+        projectsRoot: fixProjectsRoot,
+        throwawaysRoot: fixThrowawaysRoot,
+        desktopJunctionPath: fixJunction,
+        npmShimPath: fakeShimPath,
+      });
+
+      expect(fixReport.initialReport.allOk).toBe(false);
+      expect(fixReport.repairActions.some((a) => a.includes('PowerShell') && (a.includes('Updated') || a.includes('wrapper')))).toBe(true);
+      expect(fixReport.repairActions.some((a) => a.includes('Updated npm global shim'))).toBe(true);
+
+      const healedPs = fs.readFileSync(psWrapperPath, 'utf8');
+      expect(healedPs).toContain('Clear-Host');
+
+      const healedShim = fs.readFileSync(fakeShimPath, 'utf8');
+      expect(healedShim).toContain('cls');
+
       expect(fixReport.fixedReport.allOk).toBe(true);
     });
   });
