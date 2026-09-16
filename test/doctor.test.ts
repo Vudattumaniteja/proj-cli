@@ -10,6 +10,8 @@ import {
   formatDoctorReport,
   formatDoctorFixReport,
   compareVersions,
+  isPowerShellWrapperOutdated,
+  isCmdWrapperOutdated,
 } from '../src/engine/doctor.js';
 import { ensureConfigDirs } from '../src/config/index.js';
 import { writePowerShellWrapper, writeCmdWrapper } from '../src/ipc/index.js';
@@ -47,6 +49,36 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
       expect(compareVersions('2.19.0', '2.20.0')).toBe(-1);
       expect(compareVersions('2.43.0.windows.1', '2.20.0')).toBe(1);
       expect(compareVersions('v2.20.0', '2.20.0')).toBe(0);
+    });
+  });
+
+  describe('Wrapper outdated detection helpers', () => {
+    describe('isPowerShellWrapperOutdated()', () => {
+      it('returns true when content does not include Clear-Host', () => {
+        expect(isPowerShellWrapperOutdated('function proj { Set-Location $p }')).toBe(true);
+      });
+
+      it('returns false when content includes Clear-Host', () => {
+        expect(isPowerShellWrapperOutdated('function proj { Set-Location $p; Clear-Host }')).toBe(false);
+      });
+    });
+
+    describe('isCmdWrapperOutdated()', () => {
+      it('returns true when content misses ipc.json', () => {
+        expect(isCmdWrapperOutdated('delims=; cls')).toBe(true);
+      });
+
+      it('returns true when content misses delims=;', () => {
+        expect(isCmdWrapperOutdated('ipc.json cls')).toBe(true);
+      });
+
+      it('returns true when content misses cls', () => {
+        expect(isCmdWrapperOutdated('ipc.json delims=;')).toBe(true);
+      });
+
+      it('returns false when content contains ipc.json, delims=;, and cls', () => {
+        expect(isCmdWrapperOutdated('ipc.json delims=; cls')).toBe(false);
+      });
     });
   });
 
@@ -356,6 +388,42 @@ exit /b %PROJ_EXIT%
       expect(ipcCheck?.status).toBe('warning');
       expect(ipcCheck?.message).toContain('outdated IPC interceptor');
     });
+
+    it('detects existing proj.cmd lacking cls as outdated IPC interceptor', async () => {
+      ensureConfigDirs({ configDir: customConfigDir });
+      writePowerShellWrapper(undefined, { configDir: customConfigDir });
+      repairJunction(customDesktopJunction, customProjectsRoot);
+
+      const cmdWrapperPath = path.join(customConfigDir, 'proj.cmd');
+      fs.writeFileSync(
+        cmdWrapperPath,
+        `@ECHO off
+SET "IPC_FILE=%USERPROFILE%\\.proj\\ipc.json"
+FOR /F "usebackq tokens=1* delims=;" %%A IN (\`node -e "..." "%IPC_FILE%"\`) DO (
+  SET "IPC_ACTION=%%A"
+  SET "JUMP_TARGET=%%B"
+)
+IF DEFINED JUMP_TARGET (
+  cd /d "%JUMP_TARGET%"
+)
+exit /b %PROJ_EXIT%
+`,
+        'utf8'
+      );
+
+      const report = await runDoctor({
+        configDir: customConfigDir,
+        projectsRoot: customProjectsRoot,
+        throwawaysRoot: customThrowawaysRoot,
+        desktopJunctionPath: customDesktopJunction,
+      });
+
+      expect(report.allOk).toBe(false);
+      const ipcCheck = report.checks.find((c) => c.id === 'ipc');
+      expect(ipcCheck?.status).toBe('warning');
+      expect(ipcCheck?.message).toContain('outdated IPC interceptor');
+      expect(ipcCheck?.message).toContain('CMD wrapper');
+    });
   });
 
   describe('fixDoctorIssues()', () => {
@@ -508,6 +576,53 @@ exit /b %PROJ_EXIT%
       const healedShim = fs.readFileSync(fakeShimPath, 'utf8');
       expect(healedShim).toContain('cls');
 
+      expect(fixReport.fixedReport.allOk).toBe(true);
+    });
+
+    it('updates outdated proj.cmd lacking cls during fix', async () => {
+      const fixConfigDir = path.join(tempDir, 'cmd-heal-config');
+      const fixProjectsRoot = path.join(tempDir, 'cmd-heal-projects');
+      const fixThrowawaysRoot = path.join(fixProjectsRoot, 'throwaways');
+      const fixJunction = path.join(tempDir, 'Desktop', 'CmdHealJunction');
+
+      ensureConfigDirs({ configDir: fixConfigDir });
+      writePowerShellWrapper(undefined, { configDir: fixConfigDir });
+      repairJunction(fixJunction, fixProjectsRoot);
+
+      const cmdWrapperPath = path.join(fixConfigDir, 'proj.cmd');
+      fs.writeFileSync(
+        cmdWrapperPath,
+        `@ECHO off
+SET "IPC_FILE=%USERPROFILE%\\.proj\\ipc.json"
+FOR /F "usebackq tokens=1* delims=;" %%A IN (\`node -e "..." "%IPC_FILE%"\`) DO (
+  SET "IPC_ACTION=%%A"
+  SET "JUMP_TARGET=%%B"
+)
+IF DEFINED JUMP_TARGET (
+  cd /d "%JUMP_TARGET%"
+)
+exit /b %PROJ_EXIT%
+`,
+        'utf8'
+      );
+
+      const fixReport = await fixDoctorIssues({
+        configDir: fixConfigDir,
+        projectsRoot: fixProjectsRoot,
+        throwawaysRoot: fixThrowawaysRoot,
+        desktopJunctionPath: fixJunction,
+      });
+
+      expect(fixReport.initialReport.allOk).toBe(false);
+      expect(
+        fixReport.repairActions.some(
+          (a) => a.includes('CMD') && (a.includes('Updated') || a.includes('wrapper'))
+        )
+      ).toBe(true);
+
+      const healedCmd = fs.readFileSync(cmdWrapperPath, 'utf8');
+      expect(isCmdWrapperOutdated(healedCmd)).toBe(false);
+      expect(healedCmd).toContain('cls');
       expect(fixReport.fixedReport.allOk).toBe(true);
     });
   });

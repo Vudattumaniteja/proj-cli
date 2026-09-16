@@ -193,9 +193,15 @@ describe('PowerShell IPC Bridge', () => {
       expect(script).toContain('ipc.json');
       expect(script).toContain('ConvertFrom-Json');
       expect(script).toContain('Set-Location');
+      expect(script).toContain('if ($?)');
       expect(script).toContain('Clear-Host');
       expect(script).toContain('code');
       expect(script).toContain('Remove-Item');
+    });
+
+    it('generatePowerShellWrapper checks $? before calling Clear-Host', () => {
+      const script = generatePowerShellWrapper();
+      expect(script).toMatch(/if \(\$\?\) \{\s+Clear-Host\s+\}/);
     });
 
     it('supports custom function and binary names in generatePowerShellWrapper', () => {
@@ -244,7 +250,7 @@ describe('PowerShell IPC Bridge', () => {
       expect(script).toContain('SETLOCAL EnableDelayedExpansion');
       expect(script).toContain('ipc.json');
       expect(script).toContain('cd /d');
-      expect(script).toContain('cls');
+      expect(script).toContain('if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls');
       expect(script).toContain('DEL "%IPC_FILE%"');
       expect(script).toContain('exit /b %PROJ_EXIT%');
     });
@@ -255,8 +261,13 @@ describe('PowerShell IPC Bridge', () => {
       expect(script).toContain('"%_prog%"');
       expect(script).toContain('node_modules\\proj-cli\\dist\\index.js');
       expect(script).toContain('cd /d');
-      expect(script).toContain('cls');
+      expect(script).toContain('if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls');
       expect(script).toContain('DEL "%IPC_FILE%"');
+    });
+
+    it('generateCmdWrapper only clears host if cd /d succeeded and action was cd', () => {
+      const script = generateCmdWrapper();
+      expect(script).toMatch(/cd \/d "%%T"\r?\n\s+if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls/);
     });
 
     it('generateCmdWrapper supports custom binary name and config directory', () => {

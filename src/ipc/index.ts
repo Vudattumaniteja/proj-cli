@@ -177,7 +177,9 @@ function ${fnName} {
                             } else {
                                 Set-Location -LiteralPath (Split-Path -Parent $token.targetPath)
                             }
-                            Clear-Host
+                            if ($?) {
+                                Clear-Host
+                            }
                         }
                     } elseif ($token.action -eq "code") {
                         if (Test-Path -LiteralPath $token.targetPath) {
@@ -275,12 +277,11 @@ IF DEFINED JUMP_TARGET (
     code "!JUMP_TARGET!" 2>NUL
   )
   FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
-    ENDLOCAL
     IF EXIST "%%T\\" (
       cd /d "%%T"
-      cls
+      if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
     )
-    exit /b %%U
+    ENDLOCAL & exit /b %%U
   )
 )
 
@@ -315,12 +316,11 @@ IF DEFINED JUMP_TARGET (
     code "!JUMP_TARGET!" 2>NUL
   )
   FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
-    ENDLOCAL
     IF EXIST "%%T\\" (
       cd /d "%%T"
-      cls
+      if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
     )
-    exit /b %%U
+    ENDLOCAL & exit /b %%U
   )
 )
 
