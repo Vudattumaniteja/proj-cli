@@ -90,7 +90,7 @@ export function isPowerShellWrapperOutdated(content: string): boolean {
 export function isCmdWrapperOutdated(content: string): boolean {
   return (
     !content.includes('ipc.json') ||
-    !content.includes('delims=;') ||
+    !content.includes('tokens=1,2,3 delims=;') ||
     !content.includes('cls')
   );
 }

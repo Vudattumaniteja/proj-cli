@@ -282,12 +282,13 @@ IF NOT DEFINED PROJ_SHELL (
     IF "!IPC_ACTION!"=="code" (
       code "!JUMP_TARGET!" 2>NUL
     )
-    FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
+    FOR /F "tokens=1,2,3 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!;!IPC_ACTION!") DO (
+      ENDLOCAL
       IF EXIST "%%T\\" (
         cd /d "%%T"
-        if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
+        if not errorlevel 1 if "%%V"=="cd" cls
       )
-      ENDLOCAL & exit /b %%U
+      exit /b %%U
     )
   )
 )
@@ -323,12 +324,13 @@ IF NOT DEFINED PROJ_SHELL (
     IF "!IPC_ACTION!"=="code" (
       code "!JUMP_TARGET!" 2>NUL
     )
-    FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
+    FOR /F "tokens=1,2,3 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!;!IPC_ACTION!") DO (
+      ENDLOCAL
       IF EXIST "%%T\\" (
         cd /d "%%T"
-        if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
+        if not errorlevel 1 if "%%V"=="cd" cls
       )
-      ENDLOCAL & exit /b %%U
+      exit /b %%U
     )
   )
 )

@@ -65,19 +65,19 @@ describe('Doctor Diagnostic & Self-Healing Engine', () => {
 
     describe('isCmdWrapperOutdated()', () => {
       it('returns true when content misses ipc.json', () => {
-        expect(isCmdWrapperOutdated('delims=; cls')).toBe(true);
+        expect(isCmdWrapperOutdated('tokens=1,2,3 delims=; cls')).toBe(true);
       });
 
-      it('returns true when content misses delims=;', () => {
+      it('returns true when content misses tokens=1,2,3 delims=;', () => {
         expect(isCmdWrapperOutdated('ipc.json cls')).toBe(true);
       });
 
       it('returns true when content misses cls', () => {
-        expect(isCmdWrapperOutdated('ipc.json delims=;')).toBe(true);
+        expect(isCmdWrapperOutdated('ipc.json tokens=1,2,3 delims=;')).toBe(true);
       });
 
-      it('returns false when content contains ipc.json, delims=;, and cls', () => {
-        expect(isCmdWrapperOutdated('ipc.json delims=; cls')).toBe(false);
+      it('returns false when content contains ipc.json, tokens=1,2,3 delims=;, and cls', () => {
+        expect(isCmdWrapperOutdated('ipc.json tokens=1,2,3 delims=; cls')).toBe(false);
       });
     });
   });
