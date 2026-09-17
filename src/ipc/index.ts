@@ -156,8 +156,13 @@ function ${fnName} {
         $bin = (Get-Command -CommandType Application,ExternalScript "${binName}" -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "*$HOME\\.proj\\*" } | Select-Object -First 1).Source
     }
     if (-not $bin) { $bin = "${binName}" }
-    & $bin $args
-    $exitCode = $LASTEXITCODE
+    $env:PROJ_SHELL = "powershell"
+    try {
+        & $bin $args
+        $exitCode = $LASTEXITCODE
+    } finally {
+        Remove-Item Env:\PROJ_SHELL -ErrorAction SilentlyContinue
+    }
 
     $configDir = ${configDirResolution}
     $ipcFile = Join-Path $configDir "ipc.json"
@@ -262,26 +267,28 @@ SET "PROJ_EXIT=!ERRORLEVEL!"
 
 ${configDirResolution}
 
-SET "JUMP_TARGET="
-SET "IPC_ACTION="
-IF EXIST "%IPC_FILE%" (
-  FOR /F "usebackq tokens=1* delims=;" %%A IN (\`%_prog% -e "try{var d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(d.targetPath)console.log(d.action+';'+d.targetPath);}catch(e){}" "%IPC_FILE%"\`) DO (
-    SET "IPC_ACTION=%%A"
-    SET "JUMP_TARGET=%%B"
-  )
-  DEL "%IPC_FILE%" 2>NUL
-)
-
-IF DEFINED JUMP_TARGET (
-  IF "!IPC_ACTION!"=="code" (
-    code "!JUMP_TARGET!" 2>NUL
-  )
-  FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
-    IF EXIST "%%T\\" (
-      cd /d "%%T"
-      if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
+IF NOT DEFINED PROJ_SHELL (
+  SET "JUMP_TARGET="
+  SET "IPC_ACTION="
+  IF EXIST "%IPC_FILE%" (
+    FOR /F "usebackq tokens=1* delims=;" %%A IN (\`%_prog% -e "try{var d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(d.targetPath)console.log(d.action+';'+d.targetPath);}catch(e){}" "%IPC_FILE%"\`) DO (
+      SET "IPC_ACTION=%%A"
+      SET "JUMP_TARGET=%%B"
     )
-    ENDLOCAL & exit /b %%U
+    DEL "%IPC_FILE%" 2>NUL
+  )
+
+  IF DEFINED JUMP_TARGET (
+    IF "!IPC_ACTION!"=="code" (
+      code "!JUMP_TARGET!" 2>NUL
+    )
+    FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
+      IF EXIST "%%T\\" (
+        cd /d "%%T"
+        if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
+      )
+      ENDLOCAL & exit /b %%U
+    )
   )
 )
 
@@ -301,26 +308,28 @@ ${configDirResolution}
 ${runCommand}
 SET "PROJ_EXIT=!ERRORLEVEL!"
 
-SET "JUMP_TARGET="
-SET "IPC_ACTION="
-IF EXIST "%IPC_FILE%" (
-  FOR /F "usebackq tokens=1* delims=;" %%A IN (\`node -e "try{var d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(d.targetPath)console.log(d.action+';'+d.targetPath);}catch(e){}" "%IPC_FILE%"\`) DO (
-    SET "IPC_ACTION=%%A"
-    SET "JUMP_TARGET=%%B"
-  )
-  DEL "%IPC_FILE%" 2>NUL
-)
-
-IF DEFINED JUMP_TARGET (
-  IF "!IPC_ACTION!"=="code" (
-    code "!JUMP_TARGET!" 2>NUL
-  )
-  FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
-    IF EXIST "%%T\\" (
-      cd /d "%%T"
-      if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
+IF NOT DEFINED PROJ_SHELL (
+  SET "JUMP_TARGET="
+  SET "IPC_ACTION="
+  IF EXIST "%IPC_FILE%" (
+    FOR /F "usebackq tokens=1* delims=;" %%A IN (\`node -e "try{var d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(d.targetPath)console.log(d.action+';'+d.targetPath);}catch(e){}" "%IPC_FILE%"\`) DO (
+      SET "IPC_ACTION=%%A"
+      SET "JUMP_TARGET=%%B"
     )
-    ENDLOCAL & exit /b %%U
+    DEL "%IPC_FILE%" 2>NUL
+  )
+
+  IF DEFINED JUMP_TARGET (
+    IF "!IPC_ACTION!"=="code" (
+      code "!JUMP_TARGET!" 2>NUL
+    )
+    FOR /F "tokens=1,2 delims=;" %%T IN ("!JUMP_TARGET!;!PROJ_EXIT!") DO (
+      IF EXIST "%%T\\" (
+        cd /d "%%T"
+        if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls
+      )
+      ENDLOCAL & exit /b %%U
+    )
   )
 )
 

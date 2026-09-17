@@ -204,6 +204,12 @@ describe('PowerShell IPC Bridge', () => {
       expect(script).toMatch(/if \(\$\?\) \{\s+Clear-Host\s+\}/);
     });
 
+    it('generatePowerShellWrapper sets PROJ_SHELL environment variable and restores in finally', () => {
+      const script = generatePowerShellWrapper();
+      expect(script).toContain('$env:PROJ_SHELL = "powershell"');
+      expect(script).toContain('Remove-Item Env:PROJ_SHELL');
+    });
+
     it('supports custom function and binary names in generatePowerShellWrapper', () => {
       const script = generatePowerShellWrapper({
         functionName: 'myproj',
@@ -268,6 +274,14 @@ describe('PowerShell IPC Bridge', () => {
     it('generateCmdWrapper only clears host if cd /d succeeded and action was cd', () => {
       const script = generateCmdWrapper();
       expect(script).toMatch(/cd \/d "%%T"\r?\n\s+if not errorlevel 1 if "!IPC_ACTION!"=="cd" cls/);
+    });
+
+    it('generateCmdWrapper guards IPC interception with IF NOT DEFINED PROJ_SHELL', () => {
+      const script = generateCmdWrapper();
+      expect(script).toContain('IF NOT DEFINED PROJ_SHELL (');
+
+      const shimScript = generateCmdWrapper({ isNpmShim: true });
+      expect(shimScript).toContain('IF NOT DEFINED PROJ_SHELL (');
     });
 
     it('generateCmdWrapper supports custom binary name and config directory', () => {
