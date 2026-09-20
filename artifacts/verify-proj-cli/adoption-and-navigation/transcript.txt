@@ -1,13 +1,13 @@
-=== Step 1: proj adopt C:\Users\Manit\AppData\Local\Temp\proj-feat-adoption-GpnKVG\external-app -n adopted-app ===
+=== Step 1: proj adopt C:\Users\Manit\AppData\Local\Temp\proj-feat-adoption-K4Rou0\external-app -n adopted-app ===
 Exit code: 0
 STDOUT:
-Successfully adopted project "adopted-app" at C:\Users\Manit\AppData\Local\Temp\proj-feat-adoption-GpnKVG\projects\adopted-app
+Successfully adopted project "adopted-app" at C:\Users\Manit\AppData\Local\Temp\proj-feat-adoption-K4Rou0\projects\adopted-app
 
 
 === Step 2: proj cd adopted-app ===
 Exit code: 0
 STDOUT:
-Jumping to project "adopted-app" at C:\Users\Manit\AppData\Local\Temp\proj-feat-adoption-GpnKVG\projects\adopted-app
+Jumping to project "adopted-app" at C:\Users\Manit\AppData\Local\Temp\proj-feat-adoption-K4Rou0\projects\adopted-app
 
 
 === Step 3: proj delete adopted-app -f ===

@@ -1,16 +1,16 @@
 === Step 1: proj scratch spike-test --ttl 2 ===
 Exit code: 0
 STDOUT:
-Successfully created throwaway scratchpad "spike-test" at C:\Users\Manit\AppData\Local\Temp\proj-feat-throwaway-AocDjs\projects\throwaways\spike-test (expires: 2026-09-05T23:31:53.158Z)
+Successfully created throwaway scratchpad "spike-test" at C:\Users\Manit\AppData\Local\Temp\proj-feat-throwaway-FzkMsT\projects\throwaways\spike-test (expires: 2026-09-22T06:37:03.176Z)
 
 
 === Step 2: proj extend spike-test 5 ===
 Exit code: 0
 STDOUT:
-Successfully extended throwaway "spike-test" by 5 days (new expiration: 2026-09-10T23:31:53.158Z)
+Successfully extended throwaway "spike-test" by 5 days (new expiration: 2026-09-27T06:37:03.176Z)
 
 
 === Step 3: proj graduate spike-test ===
 Exit code: 0
 STDOUT:
-Successfully graduated throwaway "spike-test" to C:\Users\Manit\AppData\Local\Temp\proj-feat-throwaway-AocDjs\projects\spike-test
+Successfully graduated throwaway "spike-test" to C:\Users\Manit\AppData\Local\Temp\proj-feat-throwaway-FzkMsT\projects\spike-test

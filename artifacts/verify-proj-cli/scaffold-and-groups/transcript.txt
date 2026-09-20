@@ -1,7 +1,7 @@
 === Step 1: proj new alpha-web -t minimal ===
 Exit code: 0
 STDOUT:
-Successfully created project "alpha-web" at C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-RME09R\projects\alpha-web
+Successfully created project "alpha-web" at C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-iXy3bA\projects\alpha-web
 
 STDERR:
 
@@ -9,7 +9,7 @@ STDERR:
 === Step 2: proj new beta-api -g backend ===
 Exit code: 0
 STDOUT:
-Successfully created project "beta-api" at C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-RME09R\projects\backend\beta-api
+Successfully created project "beta-api" at C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-iXy3bA\projects\backend\beta-api
 
 STDERR:
 
@@ -20,27 +20,27 @@ STDOUT:
 [
   {
     "name": "alpha-web",
-    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-RME09R\\projects\\alpha-web",
+    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-iXy3bA\\projects\\alpha-web",
     "isGit": true,
     "branch": "master",
     "dirtyCount": 0,
     "isDirty": false,
     "templateType": "minimal",
     "templateBadge": "[minimal]",
-    "lastModified": "2026-09-03T23:31:50.478Z",
+    "lastModified": "2026-09-20T06:36:59.066Z",
     "isThrowaway": false,
     "hasRemote": false
   },
   {
     "name": "beta-api",
-    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-RME09R\\projects\\backend\\beta-api",
+    "path": "C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-scaffold-iXy3bA\\projects\\backend\\beta-api",
     "isGit": true,
     "branch": "master",
     "dirtyCount": 0,
     "isDirty": false,
     "templateType": "minimal",
     "templateBadge": "[minimal]",
-    "lastModified": "2026-09-03T23:31:51.341Z",
+    "lastModified": "2026-09-20T06:37:00.188Z",
     "isThrowaway": false,
     "hasRemote": false,
     "group": "backend"
@@ -53,6 +53,6 @@ STDERR:
 === Step 4: proj move alpha-web frontend ===
 Exit code: 0
 STDOUT:
-Successfully moved project "alpha-web" to group "frontend" (C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-RME09R\projects\frontend\alpha-web)
+Successfully moved project "alpha-web" to group "frontend" (C:\Users\Manit\AppData\Local\Temp\proj-feat-scaffold-iXy3bA\projects\frontend\alpha-web)
 
 STDERR:

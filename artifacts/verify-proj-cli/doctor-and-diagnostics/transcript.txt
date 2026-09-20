@@ -2,7 +2,7 @@
 Exit code: 0
 STDOUT:
 {
-  "timestamp": "2026-09-03T23:31:57.034Z",
+  "timestamp": "2026-09-20T06:37:09.015Z",
   "allOk": false,
   "passedCount": 2,
   "warningCount": 3,
@@ -19,14 +19,14 @@ STDOUT:
       "id": "directories",
       "name": "Canonical projects & throwaways accessibility",
       "status": "ok",
-      "message": "Canonical projects and throwaways directories accessible (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "message": "Canonical projects and throwaways directories accessible (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\projects)",
       "fixable": false
     },
     {
       "id": "junction",
       "name": "Desktop Junction health status",
       "status": "warning",
-      "message": "Desktop Junction is not created (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\Desktop\\Projects -> C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "message": "Desktop Junction is not created (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\Desktop\\Projects -> C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\projects)",
       "fixable": true
     },
     {
@@ -40,7 +40,7 @@ STDOUT:
       "id": "ipc",
       "name": "Shell IPC bridge readiness",
       "status": "warning",
-      "message": "Shell IPC bridge issues: PowerShell wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.ps1), CMD wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.cmd)",
+      "message": "Shell IPC bridge issues: PowerShell wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\.proj\\proj.ps1), CMD wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\.proj\\proj.cmd)",
       "fixable": true
     }
   ]
@@ -53,16 +53,16 @@ STDOUT:
 System Diagnostics & Self-Healing (proj doctor --fix):
 
 Repairs executed:
-  [32m+[39m Verified and ensured configuration & template files at C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj
-  [32m+[39m Created Desktop Directory Junction: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\Desktop\Projects -> C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\projects
-  [32m+[39m Generated PowerShell IPC bridge wrapper script: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj\proj.ps1
-  [32m+[39m Generated CMD IPC bridge wrapper script: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj\proj.cmd
+  [32m+[39m Verified and ensured configuration & template files at C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\.proj
+  [32m+[39m Created Desktop Directory Junction: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\Desktop\Projects -> C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\projects
+  [32m+[39m Generated PowerShell IPC bridge wrapper script: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\.proj\proj.ps1
+  [32m+[39m Generated CMD IPC bridge wrapper script: C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\.proj\proj.cmd
 
 Post-repair Diagnostic Status:
   [32m[✓][39m Git binary availability: Git binary available (v2.52.0 >= v2.20.0)
-  [32m[✓][39m Canonical projects & throwaways accessibility: Canonical projects and throwaways directories accessible (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\projects)
-  [32m[✓][39m Desktop Junction health status: Desktop Junction is healthy (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\Desktop\Projects -> C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\projects)
-  [32m[✓][39m User configuration & templates integrity: User configuration and templates intact (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-fa1Ndw\.proj)
+  [32m[✓][39m Canonical projects & throwaways accessibility: Canonical projects and throwaways directories accessible (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\projects)
+  [32m[✓][39m Desktop Junction health status: Desktop Junction is healthy (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\Desktop\Projects -> C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\projects)
+  [32m[✓][39m User configuration & templates integrity: User configuration and templates intact (C:\Users\Manit\AppData\Local\Temp\proj-feat-doctor-f39SHB\.proj)
   [32m[✓][39m Shell IPC bridge readiness: Shell IPC bridge ready (PowerShell & CMD wrappers intact)
 
 Diagnostic Summary: 5 passed, 0 warnings, 0 errors. [32mAll issues successfully repaired![39m

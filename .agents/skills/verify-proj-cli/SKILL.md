@@ -93,7 +93,7 @@ The verification harness is located at `.agents/skills/verify-proj-cli/scripts/h
 
 - `doctor`: Runs diagnostic health checks on the build, runtime, and git tooling.
 - `exec -- <args>`: Spawns `proj-cli` with provided arguments inside an ephemeral isolated sandbox and prints output.
-- `feature <name>`: Runs the full verification recipe for `scaffold`, `throwaway`, `checkpoints`, `doctor`, `adoption`, or `all`.
+- `feature <name>`: Runs the full verification recipe for `scaffold`, `throwaway`, `checkpoints`, `doctor`, `adoption`, `wrappers`, or `all`.
 - `clean`: Removes generated evidence files in `artifacts/verify-proj-cli/`.
 
 ## Feature Map
