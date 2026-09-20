@@ -13,12 +13,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const distIndex = path.resolve(rootDir, 'dist', 'index.js');
 
+function toCanonical(p: string): string {
+  try {
+    return fs.realpathSync.native(p).toLowerCase();
+  } catch {
+    return path.resolve(p).toLowerCase();
+  }
+}
+
 describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Execution (e2e)', () => {
   let tempDir: string;
   let configDir: string;
   let projectsDir: string;
   let sampleProjectDir: string;
-  let canonicalSampleProject: string;
   const originalEnvConfigDir = process.env.PROJ_CONFIG_DIR;
 
   beforeAll(async () => {
@@ -58,7 +65,6 @@ describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Executio
       'utf8'
     );
 
-    canonicalSampleProject = fs.realpathSync(sampleProjectDir);
     process.env.PROJ_CONFIG_DIR = configDir;
   });
 
@@ -101,7 +107,7 @@ describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Executio
         .filter((l) => l.length > 0);
       const lastLine = lines[lines.length - 1];
 
-      expect(lastLine.toLowerCase()).toBe(canonicalSampleProject.toLowerCase());
+      expect(toCanonical(lastLine)).toBe(toCanonical(sampleProjectDir));
 
       // IPC token should be consumed and deleted
       const ipcPath = path.join(configDir, 'ipc.json');
@@ -142,14 +148,13 @@ describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Executio
         }
       );
 
-      const canonicalTempDir = fs.realpathSync(tempDir);
       const lines = dirCheck.stdout
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
       const lastLine = lines[lines.length - 1];
 
-      expect(lastLine.toLowerCase()).toBe(canonicalTempDir.toLowerCase());
+      expect(toCanonical(lastLine)).toBe(toCanonical(tempDir));
     });
   });
 
@@ -181,7 +186,7 @@ describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Executio
         .filter((l) => l.length > 0);
       const lastLine = lines[lines.length - 1];
 
-      expect(lastLine.toLowerCase()).toBe(canonicalSampleProject.toLowerCase());
+      expect(toCanonical(lastLine)).toBe(toCanonical(sampleProjectDir));
     });
 
     it('returns non-zero exit code and preserves current directory when navigating to non-existent project with npm shim', async () => {
@@ -218,14 +223,13 @@ describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Executio
         }
       );
 
-      const canonicalTempDir = fs.realpathSync(tempDir);
       const lines = dirCheck.stdout
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
       const lastLine = lines[lines.length - 1];
 
-      expect(lastLine.toLowerCase()).toBe(canonicalTempDir.toLowerCase());
+      expect(toCanonical(lastLine)).toBe(toCanonical(tempDir));
     });
   });
 
@@ -265,7 +269,7 @@ describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Executio
         .filter((l) => l.length > 0);
       const lastLine = lines[lines.length - 1];
 
-      expect(lastLine.toLowerCase()).toBe(canonicalSampleProject.toLowerCase());
+      expect(toCanonical(lastLine)).toBe(toCanonical(sampleProjectDir));
 
       // IPC token should be consumed and deleted
       const ipcPath = path.join(configDir, 'ipc.json');
@@ -299,14 +303,13 @@ describe.runIf(process.platform === 'win32')('Shell Wrappers Subprocess Executio
 
       expect(result.exitCode).not.toBe(0);
 
-      const canonicalTempDir = fs.realpathSync(tempDir);
       const lines = result.stdout
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
       const lastLine = lines[lines.length - 1];
 
-      expect(lastLine.toLowerCase()).toBe(canonicalTempDir.toLowerCase());
+      expect(toCanonical(lastLine)).toBe(toCanonical(tempDir));
     });
   });
 });
