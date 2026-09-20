@@ -1,0 +1,31 @@
+=== Step 1: proj new nav-target -t minimal ===
+Exit code: 0
+STDOUT:
+Successfully created project "nav-target" at C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\projects\nav-target
+
+STDERR:
+
+
+=== Step 2: Generate wrappers ===
+Generated C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\.proj\proj.cmd
+Generated C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\.proj\proj.ps1
+
+=== Step 3: CMD Navigation ===
+Command: cmd.exe /c "call "C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\.proj\proj.cmd" cd nav-target && cd"
+Exit code: 0
+STDOUT:
+Jumping to project "nav-target" at C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\projects\nav-target
+C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\projects\nav-target
+
+STDERR:
+
+
+=== Step 4: PowerShell Navigation ===
+Command: powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ". 'C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\.proj\proj.ps1'; proj cd nav-target; (Get-Location).Path"
+Exit code: 0
+STDOUT:
+Jumping to project "nav-target" at C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\projects\nav-target
+0
+C:\Users\Manit\AppData\Local\Temp\proj-feat-wrappers-wBhoFe\projects\nav-target
+
+STDERR:

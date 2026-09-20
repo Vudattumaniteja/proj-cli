@@ -1,7 +1,7 @@
 === Step 1: proj checkpoint "initial experiment" ===
 Exit code: 0
 STDOUT:
-Successfully created checkpoint ae94b53 ("checkpoint: initial experiment")
+Successfully created checkpoint bc43b4d ("checkpoint: initial experiment")
 
 
 === Step 2: proj checkpoints --json ===
@@ -9,22 +9,22 @@ Exit code: 0
 STDOUT:
 [
   {
-    "hash": "ae94b53870a2cd5b24db90da0d567a2bf11056cf",
-    "shortHash": "ae94b53",
+    "hash": "bc43b4d5f297949c2e7f1cb1c9d45a936e1d4fcb",
+    "shortHash": "bc43b4d",
     "message": "checkpoint: initial experiment",
-    "date": "2026-09-03T23:31:55.000Z",
-    "timestamp": "2026-09-03T23:31:55.000Z",
+    "date": "2026-09-20T06:37:06.000Z",
+    "timestamp": "2026-09-20T06:37:06.000Z",
     "relativeTimestamp": "just now",
     "relativeTime": "just now",
     "authorName": "Proj Verifier",
     "authorEmail": "verify@example.com"
   },
   {
-    "hash": "1c2524d1b35e4c16369c8c20516b8ff69893d380",
-    "shortHash": "1c2524d",
+    "hash": "535a81a8b1e57630bd80d5b0e541df6793921c19",
+    "shortHash": "535a81a",
     "message": "checkpoint: Initial commit with agent guardrails & gitignore",
-    "date": "2026-09-03T23:31:54.000Z",
-    "timestamp": "2026-09-03T23:31:54.000Z",
+    "date": "2026-09-20T06:37:05.000Z",
+    "timestamp": "2026-09-20T06:37:05.000Z",
     "relativeTimestamp": "just now",
     "relativeTime": "just now",
     "authorName": "Proj Verifier",
@@ -36,8 +36,8 @@ STDOUT:
 === Step 3: proj undo HEAD ===
 Exit code: 0
 STDOUT:
-[32m✔[39m Rolled back to checkpoint [1m[36mae94b53[39m[22m ([3mcheckpoint: initial experiment[23m)
-[33m⚠[39m Emergency safety stash created: [1mproj-safety-stash-1788478316158[22m (stash@{0})
+[32m✔[39m Rolled back to checkpoint [1m[36mbc43b4d[39m[22m ([3mcheckpoint: initial experiment[23m)
+[33m⚠[39m Emergency safety stash created: [1mproj-safety-stash-1789886227853[22m (stash@{0})
   (To restore stashed uncommitted work later: [2mgit stash pop[22m)
 Reverted 1 file(s):
   - experiment.txt

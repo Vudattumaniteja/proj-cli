@@ -3,13 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const DIST_INDEX = path.join(REPO_ROOT, 'dist', 'index.js');
 const ARTIFACTS_DIR = path.join(REPO_ROOT, 'artifacts', 'verify-proj-cli');
+
 
 /**
  * Ensures build output exists.
@@ -29,6 +30,10 @@ function ensureBuild() {
     }
   }
 }
+
+ensureBuild();
+const { writePowerShellWrapper, writeCmdWrapper } = await import(pathToFileURL(DIST_INDEX).href);
+
 
 /**
  * Creates an isolated sandbox environment in os.tmpdir().
@@ -412,6 +417,103 @@ function verifyAdoption() {
 }
 
 /**
+ * Verifies Feature 6: Real Shell Navigation Wrappers.
+ */
+function verifyWrappers() {
+  const sandbox = createSandbox('feat-wrappers');
+  const evidence = [];
+  try {
+    // 1. Scaffold test project in sandbox
+    const newRes = runProj(['new', 'nav-target', '-t', 'minimal'], {
+      configDir: sandbox.configDir,
+    });
+    evidence.push(`=== Step 1: proj new nav-target -t minimal ===\nExit code: ${newRes.status}\nSTDOUT:\n${newRes.stdout}\nSTDERR:\n${newRes.stderr}`);
+    if (newRes.status !== 0) throw new Error(`scaffold test project failed: ${newRes.stderr}`);
+
+    const targetPath = path.join(sandbox.projectsRoot, 'nav-target');
+    if (!fs.existsSync(targetPath)) throw new Error(`Target project directory not found: ${targetPath}`);
+
+    // 2. Generate proj.cmd and proj.ps1 in the sandbox
+    const cmdWrapper = path.join(sandbox.configDir, 'proj.cmd');
+    const psWrapper = path.join(sandbox.configDir, 'proj.ps1');
+
+    writeCmdWrapper(cmdWrapper, {
+      configDir: sandbox.configDir,
+      targetJs: DIST_INDEX,
+    });
+    writePowerShellWrapper(psWrapper, {
+      configDir: sandbox.configDir,
+    });
+
+    if (!fs.existsSync(cmdWrapper)) throw new Error('proj.cmd wrapper was not generated');
+    if (!fs.existsSync(psWrapper)) throw new Error('proj.ps1 wrapper was not generated');
+    evidence.push(`\n=== Step 2: Generate wrappers ===\nGenerated ${cmdWrapper}\nGenerated ${psWrapper}`);
+
+    const env = {
+      ...process.env,
+      PROJ_CONFIG_DIR: sandbox.configDir,
+      PATH: `${sandbox.configDir}${path.delimiter}${process.env.PATH}`,
+    };
+
+    // 3. Test CMD navigation: cmd.exe /c "call \"<cmdWrapper>\" cd <target> && cd"
+    const cmdLine = `call "${cmdWrapper}" cd nav-target && cd`;
+    const cmdRes = spawnSync('cmd.exe', ['/c', cmdLine], {
+      cwd: sandbox.tmpBase,
+      env,
+      encoding: 'utf8',
+      windowsVerbatimArguments: true,
+    });
+    evidence.push(`\n=== Step 3: CMD Navigation ===\nCommand: cmd.exe /c "${cmdLine}"\nExit code: ${cmdRes.status}\nSTDOUT:\n${cmdRes.stdout}\nSTDERR:\n${cmdRes.stderr}`);
+    if (cmdRes.status !== 0) {
+      throw new Error(`CMD wrapper execution failed with exit code ${cmdRes.status}: ${cmdRes.stderr}`);
+    }
+
+    const cmdLines = cmdRes.stdout
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\f/g, '').trim())
+      .filter(Boolean);
+    const cmdLastLine = cmdLines[cmdLines.length - 1] || '';
+    if (path.resolve(cmdLastLine).toLowerCase() !== path.resolve(targetPath).toLowerCase()) {
+      throw new Error(`CMD post-navigation directory mismatch: expected "${targetPath}", got "${cmdLastLine}"`);
+    }
+
+    // 4. Test PowerShell navigation: powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ". '<psWrapper>'; proj cd <target>; (Get-Location).Path"
+    const psCmd = `. '${psWrapper}'; proj cd nav-target; (Get-Location).Path`;
+    const psRes = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCmd],
+      {
+        cwd: sandbox.tmpBase,
+        env,
+        encoding: 'utf8',
+      }
+    );
+    evidence.push(`\n=== Step 4: PowerShell Navigation ===\nCommand: powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "${psCmd}"\nExit code: ${psRes.status}\nSTDOUT:\n${psRes.stdout}\nSTDERR:\n${psRes.stderr}`);
+    if (psRes.status !== 0) {
+      throw new Error(`PowerShell wrapper execution failed with exit code ${psRes.status}: ${psRes.stderr}`);
+    }
+
+    const psLines = psRes.stdout
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const psLastLine = psLines[psLines.length - 1] || '';
+    if (path.resolve(psLastLine).toLowerCase() !== path.resolve(targetPath).toLowerCase()) {
+      throw new Error(`PowerShell post-navigation directory mismatch: expected "${targetPath}", got "${psLastLine}"`);
+    }
+
+    // 5. Save evidence
+    saveEvidence('wrappers', 'transcript.txt', evidence.join('\n'));
+    process.stdout.write('Feature "wrappers" verified successfully.\n');
+    return true;
+  } finally {
+    sandbox.cleanup();
+  }
+}
+
+/**
  * Main CLI handler for harness.
  */
 function main() {
@@ -445,10 +547,12 @@ function main() {
     if (featureName === 'checkpoints' || featureName === 'all') ok = verifyCheckpoints() && ok;
     if (featureName === 'doctor' || featureName === 'all') ok = verifyDoctor() && ok;
     if (featureName === 'adoption' || featureName === 'all') ok = verifyAdoption() && ok;
+    if (featureName === 'wrappers' || featureName === 'all') ok = verifyWrappers() && ok;
 
     process.exitCode = ok ? 0 : 1;
     return;
   }
+
 
   if (command === 'clean') {
     if (fs.existsSync(ARTIFACTS_DIR)) {

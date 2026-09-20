@@ -17,6 +17,8 @@
 - Follow Test-Driven Development (TDD): write or update tests before modifying implementation code.
 - Every commit must pass all test suites (`npm test`), type checking (`npm run typecheck`), and the build step (`npm run build`).
 - Strict TypeScript: no implicit or explicit `any`. Handle nullable types explicitly.
+- Never rely on string-only matching (`toContain`, regex) to verify shell scripts, batch files, or IPC wrappers. Any wrapper that alters navigation, environment variables, or shell state must be tested by executing inside a real shell subprocess (`cmd.exe`, `powershell.exe`) and asserting post-execution working directories and exit codes.
+
 
 ### 4. Architectural Invariants & Spec Integrity
 - Consult `CONTEXT.md` before adding or altering core CLI commands, IPC schemas, or data models.

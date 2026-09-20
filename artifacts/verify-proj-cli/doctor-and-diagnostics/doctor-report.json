@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-03T23:31:57.034Z",
+  "timestamp": "2026-09-20T06:37:09.015Z",
   "allOk": false,
   "passedCount": 2,
   "warningCount": 3,
@@ -16,14 +16,14 @@
       "id": "directories",
       "name": "Canonical projects & throwaways accessibility",
       "status": "ok",
-      "message": "Canonical projects and throwaways directories accessible (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "message": "Canonical projects and throwaways directories accessible (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\projects)",
       "fixable": false
     },
     {
       "id": "junction",
       "name": "Desktop Junction health status",
       "status": "warning",
-      "message": "Desktop Junction is not created (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\Desktop\\Projects -> C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\projects)",
+      "message": "Desktop Junction is not created (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\Desktop\\Projects -> C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\projects)",
       "fixable": true
     },
     {
@@ -37,7 +37,7 @@
       "id": "ipc",
       "name": "Shell IPC bridge readiness",
       "status": "warning",
-      "message": "Shell IPC bridge issues: PowerShell wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.ps1), CMD wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-fa1Ndw\\.proj\\proj.cmd)",
+      "message": "Shell IPC bridge issues: PowerShell wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\.proj\\proj.ps1), CMD wrapper (C:\\Users\\Manit\\AppData\\Local\\Temp\\proj-feat-doctor-f39SHB\\.proj\\proj.cmd)",
       "fixable": true
     }
   ]
