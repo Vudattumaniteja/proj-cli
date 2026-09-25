@@ -201,6 +201,44 @@ describe('proj CLI binary build and execution', () => {
     expect(fs.existsSync(expDir)).toBe(false);
   });
 
+  it('executes dist/index.js conversation and expired --clean via CLI binary', async () => {
+    const throwawaysDir = path.join(sampleProjectsDir, 'throwaways');
+
+    // 1. Create conversation with --no-launch
+    const { stdout: convOut } = await execa(
+      'node',
+      [distIndex, 'conversation', 'binary-conv-app', '--no-launch'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(convOut).toContain('Successfully created conversation scratchpad "binary-conv-app"');
+    const convPath = path.join(throwawaysDir, 'binary-conv-app');
+    expect(fs.existsSync(convPath)).toBe(true);
+    expect(fs.existsSync(path.join(convPath, 'AGENTS.md'))).toBe(true);
+    expect(fs.existsSync(path.join(convPath, '.git'))).toBe(true);
+
+    const token = readIpcToken({ configDir: tempConfigDir });
+    expect(token?.action).toBe('cd');
+    expect(token?.targetPath).toBe(convPath);
+
+    // 2. Mark as expired and test expired --clean
+    const configPath = path.join(tempConfigDir, 'config.json');
+    const existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    existingConfig.throwaways['binary-conv-app'].expiresAt = '2020-01-01T00:00:00.000Z';
+    fs.writeFileSync(configPath, JSON.stringify(existingConfig));
+
+    const { stdout: cleanOut } = await execa(
+      'node',
+      [distIndex, 'expired', '--clean'],
+      {
+        env: { PROJ_CONFIG_DIR: tempConfigDir },
+      }
+    );
+    expect(cleanOut).toContain('Successfully deleted throwaway "binary-conv-app"');
+    expect(fs.existsSync(convPath)).toBe(false);
+  });
+
   it('executes dist/index.js checkpoint, checkpoints, and undo binary commands on a Git project', async () => {
     const projPath = path.join(sampleProjectsDir, 'binary-scratch-app');
 

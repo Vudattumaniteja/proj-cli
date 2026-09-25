@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import childProcess from 'node:child_process';
 import { createProgram } from '../src/index.js';
 import { updateConfig } from '../src/config/index.js';
 import { readIpcToken } from '../src/ipc/index.js';
@@ -28,6 +29,7 @@ describe('proj CLI basic interface', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     if (originalEnvConfigDir !== undefined) {
       process.env.PROJ_CONFIG_DIR = originalEnvConfigDir;
     } else {
@@ -738,6 +740,148 @@ describe('proj CLI basic interface', () => {
     } finally {
       process.stderr.write = originalErr;
       process.exitCode = 0;
+    }
+  });
+
+  it('runs conversation command, creates scratchpad, emits cd IPC token, and launches agy', async () => {
+    const spawnSpy = vi.spyOn(childProcess, 'spawnSync').mockReturnValue({ status: 0 } as any);
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'conversation', 'cli-chat-1']);
+      expect(output).toContain('Successfully created conversation scratchpad "cli-chat-1"');
+      const expectedPath = path.join(throwawaysDir, 'cli-chat-1');
+      expect(fs.existsSync(expectedPath)).toBe(true);
+
+      const token = readIpcToken({ configDir: tempDir });
+      expect(token?.action).toBe('cd');
+      expect(token?.targetPath).toBe(expectedPath);
+
+      expect(spawnSpy).toHaveBeenCalledWith(
+        'agy',
+        [],
+        expect.objectContaining({
+          cwd: expectedPath,
+          stdio: 'inherit',
+          shell: true,
+        })
+      );
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs conv alias with --no-launch and skips launching agy', async () => {
+    const spawnSpy = vi.spyOn(childProcess, 'spawnSync').mockReturnValue({ status: 0 } as any);
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'conv', 'cli-chat-no-launch', '--no-launch']);
+      expect(output).toContain('Successfully created conversation scratchpad "cli-chat-no-launch"');
+      const expectedPath = path.join(throwawaysDir, 'cli-chat-no-launch');
+      expect(fs.existsSync(expectedPath)).toBe(true);
+
+      expect(spawnSpy).not.toHaveBeenCalled();
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs chat alias and auto-generates name when omitted', async () => {
+    const spawnSpy = vi.spyOn(childProcess, 'spawnSync').mockReturnValue({ status: 0 } as any);
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'chat', '--no-launch']);
+      expect(output).toMatch(/Successfully created conversation scratchpad "conversation-\d{4}-\d{2}-\d{2}-\d{4}"/);
+      expect(spawnSpy).not.toHaveBeenCalled();
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('silently auto-prunes expired throwaways on command execution via preAction', async () => {
+    const expiredPath = path.join(throwawaysDir, 'auto-prune-me');
+    fs.mkdirSync(expiredPath, { recursive: true });
+    updateConfig({
+      throwaways: {
+        'auto-prune-me': {
+          name: 'auto-prune-me',
+          path: expiredPath,
+          createdAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-01-02T00:00:00.000Z',
+          ttlDays: 1,
+          template: 'minimal',
+        },
+      },
+    });
+
+    expect(fs.existsSync(expiredPath)).toBe(true);
+
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'list']);
+      expect(fs.existsSync(expiredPath)).toBe(false);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
+
+  it('runs expired --clean and deletes expired throwaways', async () => {
+    const expiredPath = path.join(throwawaysDir, 'clean-target');
+    fs.mkdirSync(expiredPath, { recursive: true });
+    updateConfig({
+      throwaways: {
+        'clean-target': {
+          name: 'clean-target',
+          path: expiredPath,
+          createdAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-01-02T00:00:00.000Z',
+          ttlDays: 1,
+          template: 'minimal',
+        },
+      },
+    });
+
+    const program = createProgram();
+    let output = '';
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: any) => {
+      output += chunk.toString();
+      return true;
+    }) as any;
+
+    try {
+      await program.parseAsync(['node', 'proj', 'expired', '--clean']);
+      expect(output).toContain('Successfully deleted throwaway "clean-target"');
+      expect(fs.existsSync(expiredPath)).toBe(false);
+    } finally {
+      process.stdout.write = originalWrite;
     }
   });
 });

@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import childProcess from 'node:child_process';
 import { simpleGit } from 'simple-git';
 import {
   getConfig,
   updateConfig,
   DEFAULT_TTL_DAYS,
 } from '../config/index.js';
+import { emitIpcToken } from '../ipc/index.js';
 import {
   validateProjectName,
   validateTemplate,
@@ -15,6 +17,7 @@ import type {
   ProjectTemplate,
   ThrowawayRecord,
   ThrowawayOptions,
+  ConversationOptions,
   GraduateOptions,
   GraduateResult,
   DeleteThrowawayResult,
@@ -113,6 +116,59 @@ export async function createThrowaway(
   }
 }
 
+function formatConversationDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  const mm = pad(date.getMonth() + 1);
+  const dd = pad(date.getDate());
+  const hh = pad(date.getHours());
+  const min = pad(date.getMinutes());
+  return `conversation-${yyyy}-${mm}-${dd}-${hh}${min}`;
+}
+
+/**
+ * Creates a time-boxed 1-day conversation scratchpad, initializes Git with agent guardrails,
+ * records metadata in configuration, and emits an IPC cd token.
+ */
+export async function createConversation(
+  name?: string,
+  options?: ConversationOptions
+): Promise<ThrowawayRecord> {
+  const now = options?.now !== undefined ? new Date(options.now) : new Date();
+  const trimmedName = name && name.trim() ? name.trim() : formatConversationDate(now);
+
+  const ttlDays = options?.ttl !== undefined ? options.ttl : 1;
+  const template = options?.template || 'minimal';
+
+  const record = await createThrowaway(trimmedName, ttlDays, template, options);
+
+  try {
+    // Initialize local Git repository and create snapshot commit with agent guardrails
+    const git = simpleGit(record.path, { maxConcurrentProcesses: 2 });
+    await git.init();
+    await git.addConfig('user.name', options?.gitAuthorName || 'proj-agent', false, 'local');
+    await git.addConfig('user.email', options?.gitAuthorEmail || 'agent@proj.local', false, 'local');
+    await git.add('.');
+    await git.commit('checkpoint: Initial conversation workspace with agent guardrails');
+  } catch {
+    // Gracefully handle git initialization failure in constrained environments
+  }
+
+  // Emit IPC cd token for target path
+  emitIpcToken('cd', record.path, { configDir: options?.configDir });
+
+  // Launch agy if requested
+  if (options?.launchAgy) {
+    childProcess.spawnSync('agy', [], {
+      stdio: 'inherit',
+      cwd: record.path,
+      shell: true,
+    });
+  }
+
+  return record;
+}
+
 /**
  * Helper to look up a throwaway entry from config dictionary by key OR record.name.
  * Returns the dictionary key and record, or null if not found.
@@ -209,6 +265,29 @@ export function checkExpiredThrowaways(
   }
 
   return expired.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Silently deletes expired throwaways without throwing or outputting errors.
+ */
+export function pruneExpiredSilently(
+  options?: ThrowawayOptions & { now?: Date | string | number }
+): ThrowawayRecord[] {
+  try {
+    const expired = checkExpiredThrowaways(options);
+    const pruned: ThrowawayRecord[] = [];
+    for (const record of expired) {
+      try {
+        deleteThrowaway(record.name, options);
+        pruned.push(record);
+      } catch {
+        // Silently swallow errors
+      }
+    }
+    return pruned;
+  } catch {
+    return [];
+  }
 }
 
 /**
