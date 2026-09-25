@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
+import childProcess from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   getConfig,
@@ -15,6 +16,8 @@ import {
   formatProjectsJson,
   scaffoldProject,
   createThrowaway,
+  createConversation,
+  pruneExpiredSilently,
   graduateThrowaway,
   extendThrowaway,
   deleteThrowaway,
@@ -60,6 +63,13 @@ export function createProgram(): Command {
     .description('TypeScript CLI for Developer Workspace & Local Git Project Management')
     .version('0.1.0')
     .option('-i, --interactive', 'Launch interactive Clack TUI dashboard');
+
+  program.hook('preAction', (_thisCommand, actionCommand) => {
+    if (actionCommand.name() === 'expired' || actionCommand.name() === 'prune-expired') {
+      return;
+    }
+    pruneExpiredSilently();
+  });
 
   program
     .command('init')
@@ -175,6 +185,49 @@ export function createProgram(): Command {
     );
 
   program
+    .command('conversation [name]')
+    .alias('conv')
+    .alias('chat')
+    .description('Create a time-boxed 1-day conversation scratchpad and launch agy')
+    .option('--no-launch', 'Skip launching agy, just create scratchpad and cd')
+    .option(
+      '-t, --template <template>',
+      `Starter template (${SUPPORTED_TEMPLATES.join(', ')})`,
+      'minimal'
+    )
+    .option('--ttl <days>', 'Time-to-live in days', (val) => parseInt(val, 10))
+    .action(
+      async (
+        name?: string,
+        options: { launch?: boolean; template?: string; ttl?: number } = {}
+      ) => {
+        try {
+          const result = await createConversation(name, {
+            ttl: options.ttl,
+            template: options.template,
+          });
+          emitIpcToken('cd', result.path);
+          process.stdout.write(
+            `Successfully created conversation scratchpad "${result.name}" at ${result.path} (expires: ${result.expiresAt})\n`
+          );
+          if (options.launch !== false && !(options as any).noLaunch) {
+            if (process.stdout.isTTY) {
+              console.clear();
+            }
+            childProcess.spawnSync('agy', [], {
+              stdio: 'inherit',
+              cwd: result.path,
+              shell: true,
+            });
+          }
+        } catch (err: unknown) {
+          process.stderr.write(`Error: ${(err as Error).message}\n`);
+          process.exitCode = 1;
+        }
+      }
+    );
+
+  program
     .command('graduate <name>')
     .description('Graduate a throwaway scratchpad into a permanent Git-tracked project')
     .action(async (name: string) => {
@@ -225,11 +278,13 @@ export function createProgram(): Command {
     .alias('prune-expired')
     .description('List or batch delete expired throwaway scratchpads')
     .option('-d, --delete', 'Delete all expired throwaway scratchpads')
+    .option('--clean', 'Delete all expired throwaway scratchpads')
     .option('--json', 'Output expired list in JSON format')
-    .action(async (options: { delete?: boolean; json?: boolean }) => {
+    .action(async (options: { delete?: boolean; clean?: boolean; json?: boolean }) => {
       try {
         const expired = checkExpiredThrowaways();
-        if (options.delete) {
+        const shouldDelete = Boolean(options.delete || options.clean);
+        if (shouldDelete) {
           if (expired.length === 0) {
             process.stdout.write('No expired throwaways found.\n');
             return;
@@ -554,6 +609,7 @@ export function createProgram(): Command {
     });
 
   program.action(async (options: { interactive?: boolean } = {}) => {
+    pruneExpiredSilently();
     if (options.interactive || (process.stdin.isTTY && process.env.NODE_ENV !== 'test')) {
       await launchInteractiveDashboard();
     } else {

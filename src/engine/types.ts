@@ -86,6 +86,14 @@ export interface ThrowawayOptions {
   now?: Date | string | number;
 }
 
+export interface ConversationOptions extends ThrowawayOptions {
+  ttl?: number;
+  template?: string;
+  launchAgy?: boolean;
+  gitAuthorName?: string;
+  gitAuthorEmail?: string;
+}
+
 export interface GraduateOptions {
   configDir?: string;
   projectsRoot?: string;
