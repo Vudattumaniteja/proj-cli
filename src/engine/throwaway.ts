@@ -159,6 +159,9 @@ export async function createConversation(
 
   // Launch agy if requested
   if (options?.launchAgy) {
+    if (process.stdout.isTTY) {
+      console.clear();
+    }
     childProcess.spawnSync('agy', [], {
       stdio: 'inherit',
       cwd: record.path,

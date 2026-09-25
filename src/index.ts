@@ -211,6 +211,9 @@ export function createProgram(): Command {
             `Successfully created conversation scratchpad "${result.name}" at ${result.path} (expires: ${result.expiresAt})\n`
           );
           if (options.launch !== false && !(options as any).noLaunch) {
+            if (process.stdout.isTTY) {
+              console.clear();
+            }
             childProcess.spawnSync('agy', [], {
               stdio: 'inherit',
               cwd: result.path,
